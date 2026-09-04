@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+coverage/
+output/
+.playwright-cli/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.agents

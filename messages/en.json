@@ -1,0 +1,6 @@
+{
+  "Nav": { "home": "Home", "shop": "Shop", "track": "Track order", "login": "Sign in", "account": "Account", "cart": "Cart" },
+  "Home": { "eyebrow": "The new edit", "title": "Made for the life you live", "subtitle": "Considered dresses with expressive detail, comfortable movement, and an easy place in your everyday wardrobe.", "shop": "Explore the collection", "featured": "The current edit" },
+  "Common": { "loading": "Loading…", "retry": "Try again", "addToCart": "Add to cart", "viewProduct": "View product", "empty": "Nothing to show yet." },
+  "ui": { "previous": "Previous", "next": "Next", "search": "Search", "clear": "Clear", "close": "Close", "remove": "Remove", "today": "Today", "actions": "Actions", "all": "All", "noResults": "No results", "confirm": "Confirm", "cancel": "Cancel", "save": "Save", "saving": "Saving…" }
+}

@@ -1,0 +1,14 @@
+import Link from 'next/link';
+import Image from 'next/image';
+import { WishlistButton } from '@/components/storefront/wishlist-button';
+import { formatMoney } from '@/lib/utils';
+
+export function ProductCard({ product, locale }) {
+  const defaultVariant = product.variants.find((variant) => variant.isDefault) || product.variants[0];
+  const unavailable = !defaultVariant?.available && defaultVariant?.stockPolicy === 'deny';
+  return <article className="group relative min-w-0">
+    <div className="absolute right-3 top-3 z-10"><WishlistButton productId={product.id} variantId={defaultVariant?.id} locale={locale} compact /></div>
+    <Link href={`/${locale}/product/${product.slug}`} className="relative block aspect-[4/5] overflow-hidden rounded-[1.35rem] bg-[linear-gradient(145deg,var(--color-primary-soft),var(--color-surface-muted))]">{product.primaryImage ? <Image src={product.primaryImage.url} alt={product.primaryImage.alt || product.name} fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw" className="object-cover transition duration-700 ease-out group-hover:scale-[1.045]" /> : <span className="absolute inset-0 grid place-items-center text-center text-[11px] font-semibold tracking-[.22em] text-[var(--color-primary)]/50">ELITE<br />EMPORIUM</span>}<span className={`absolute bottom-3 right-3 rounded-md border border-white/55 px-2.5 py-1 text-[10px] font-semibold backdrop-blur-md ${unavailable ? 'bg-[color-mix(in_srgb,var(--color-danger)_8%,white)] text-[var(--color-danger)]' : 'bg-white/86 text-[var(--color-text)]'}`}>{defaultVariant?.available ? `${defaultVariant.availableQuantity} available` : unavailable ? 'Out of stock' : 'Pre-order'}</span>{defaultVariant?.salePrice ? <span className="absolute left-3 top-3 rounded-md bg-[var(--color-danger)] px-2.5 py-1 text-[10px] font-semibold text-white">Sale</span> : null}<span className="absolute inset-0 border border-black/5 rounded-[1.35rem]" /></Link>
+    <div className="px-1 pb-2 pt-4"><p className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--color-muted)]">{product.category?.name || 'Elite Emporium'}</p><h2 className="mt-1.5 line-clamp-2 font-semibold leading-snug tracking-[-.015em] transition group-hover:text-[var(--color-primary)]"><Link href={`/${locale}/product/${product.slug}`}>{product.name}</Link></h2><div className="mt-2.5 flex items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2 tabular-nums"><strong className="font-semibold text-[var(--color-primary)]">{formatMoney(defaultVariant?.price || product.priceRange?.min, locale)}</strong>{defaultVariant?.salePrice ? <del className="text-xs muted">{formatMoney(defaultVariant.regularPrice, locale)}</del> : null}</div>{product.rating?.count ? <p className="text-xs text-[var(--color-warning)]">★ {product.rating.average.toFixed(1)} <span className="muted">({product.rating.count})</span></p> : null}</div></div>
+  </article>;
+}

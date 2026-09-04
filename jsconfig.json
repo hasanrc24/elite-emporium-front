@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "jsx": "preserve",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./*"] }
+  },
+  "include": ["next-env.d.ts", ".next/types/**/*.ts", "app/**/*.js", "app/**/*.jsx", "components/**/*.js", "components/**/*.jsx", "features/**/*.js", "features/**/*.jsx", "lib/**/*.js", "lib/**/*.jsx", "providers/**/*.jsx", "i18n/**/*.js", "types/**/*.d.ts", "proxy.js"],
+  "exclude": ["node_modules", "tests"]
+}

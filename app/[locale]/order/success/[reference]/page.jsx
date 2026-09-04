@@ -1,0 +1,5 @@
+import Link from 'next/link';
+import { CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+export const metadata = { title: 'Order received', robots: { index: false } };
+export default async function SuccessPage({ params }) { const { locale, reference } = await params; return <div className="container py-20"><div className="card mx-auto max-w-xl p-10 text-center"><CheckCircle2 className="mx-auto text-green-700" size={60} /><h1 className="mt-5 text-3xl font-black">Thank you for your order</h1><p className="mt-3 muted">Your order reference is <strong className="text-[var(--color-text)]">{reference}</strong>. Keep your phone nearby for confirmation.</p><div className="mt-7 flex flex-wrap justify-center gap-3"><Button asChild><Link href={`/${locale}/track-order?reference=${encodeURIComponent(reference)}`}>Track order</Link></Button><Button asChild variant="secondary"><Link href={`/${locale}/register?orderReference=${encodeURIComponent(reference)}&returnTo=/${locale}/account/orders`}>Create account and link order</Link></Button></div></div></div>; }

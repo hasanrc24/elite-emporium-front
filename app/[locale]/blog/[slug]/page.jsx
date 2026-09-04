@@ -1,0 +1,5 @@
+import { notFound } from 'next/navigation';
+import { StructuredContent } from '@/components/storefront/structured-content';
+import { serverGet } from '@/lib/api/server-api';
+export async function generateMetadata({ params }) { const { locale, slug } = await params; try { const post = await serverGet(`/posts/${slug}`, { locale, revalidate: 60 }); return { title: post.seo.title, description: post.seo.description }; } catch { return { title: 'Journal' }; } }
+export default async function PostPage({ params }) { const { locale, slug } = await params; let post; try { post = await serverGet(`/posts/${slug}`, { locale, revalidate: 60 }); } catch { notFound(); } return <article className="container py-12"><header className="mx-auto max-w-3xl text-center"><p className="text-sm uppercase tracking-widest text-[var(--color-primary)]">{post.type}</p><h1 className="mt-3 text-4xl font-black md:text-5xl">{post.title}</h1><p className="mt-4 text-lg muted">{post.excerpt}</p></header><div className="mx-auto mt-10 max-w-4xl"><StructuredContent blocks={post.blocks} locale={locale} /></div></article>; }
