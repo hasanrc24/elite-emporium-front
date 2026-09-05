@@ -1,124 +1,146 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Calendar as CalendarIcon } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const MS_DAY = 86_400_000;
-
-function toIso(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function startOfMonth(year, month) {
-  return new Date(year, month, 1);
-}
-
-function buildGrid(date) {
-  const first = startOfMonth(date.getFullYear(), date.getMonth());
-  const offset = (first.getDay() + 6) % 7;
-  const start = new Date(first);
-  start.setDate(first.getDate() - offset);
-  return Array.from({ length: 42 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
-}
-
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
-export function DatePicker({ value, onChange, placeholder = 'Select date', min, max, disabled, className, name, locale = 'en' }) {
-  const containerRef = useRef(null);
-  const initial = value ? new Date(value) : new Date();
-  const [open, setOpen] = useState(false);
-  const [view, setView] = useState(new Date(initial.getFullYear(), initial.getMonth(), 1));
-
-  useEffect(() => {
-    function onDown(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, []);
-
-  const selected = value ? new Date(value) : null;
-  const minDate = min ? new Date(min) : null;
-  const maxDate = max ? new Date(max) : null;
-  const display = selected ? selected.toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-BD', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
-
-  function pick(d) {
-    if (minDate && d < minDate) return;
-    if (maxDate && d > maxDate) return;
-    onChange?.(toIso(d));
-    setOpen(false);
-  }
-
-  function shift(delta) {
-    setView((v) => new Date(v.getFullYear(), v.getMonth() + delta, 1));
-  }
-
-  return (
-    <div ref={containerRef} className={cn('relative', className)}>
-      {name ? <input type="hidden" name={name} value={value || ''} /> : null}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        disabled={disabled}
-        className={cn('flex h-11 w-full items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3.5 text-sm transition hover:border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:shadow-[var(--shadow-focus)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60', !value && 'text-[var(--color-muted)]')}
-      >
-        <span className="truncate">{display || placeholder}</span>
-        <CalendarIcon className="h-4 w-4 text-[var(--color-muted)]" aria-hidden="true" />
-      </button>
-      {open ? (
-        <div role="dialog" className="absolute left-0 right-0 z-50 mt-1 w-72 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3 shadow-[var(--shadow-md)]">
-          <div className="mb-2 flex items-center justify-between">
-            <button type="button" onClick={() => shift(-1)} aria-label="Previous month" className="rounded-full p-1 hover:bg-[var(--color-surface-muted)]">‹</button>
-            <p className="text-sm font-semibold">
-              {MONTHS[view.getMonth()]} {view.getFullYear()}
-            </p>
-            <button type="button" onClick={() => shift(1)} aria-label="Next month" className="rounded-full p-1 hover:bg-[var(--color-surface-muted)]">›</button>
-          </div>
-          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[0.65rem] font-semibold uppercase text-[var(--color-muted)]">
-            {WEEKDAYS.map((d) => (
-              <span key={d}>{d}</span>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {buildGrid(view).map((d, i) => {
-              const inMonth = d.getMonth() === view.getMonth();
-              const isSelected = selected && Math.abs(d - selected) < MS_DAY;
-              const disabledDay = (minDate && d < minDate) || (maxDate && d > maxDate);
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={disabledDay}
-                  onClick={() => pick(d)}
-                  className={cn(
-                    'grid h-9 place-items-center rounded-[calc(var(--radius-sm)-.25rem)] text-sm transition',
-                    !inMonth && 'text-[var(--color-muted)]/40',
-                    isSelected && 'bg-[var(--color-primary)] text-white',
-                    !isSelected && !disabledDay && 'hover:bg-[var(--color-primary-soft)]',
-                    disabledDay && 'cursor-not-allowed opacity-40'
-                  )}
-                >
-                  {d.getDate()}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-2 flex justify-between text-xs">
-            <button type="button" onClick={() => pick(new Date())} className="font-semibold text-[var(--color-primary)]">Today</button>
-            {value ? (
-              <button type="button" onClick={() => { onChange?.(''); setOpen(false); }} className="text-[var(--color-muted)]">Clear</button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+function parseDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4] || 0), Number(match[5] || 0));
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
+
+function isoDate(date) {
+  if (!date) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function outputValue(date, withTime, previous) {
+  if (!withTime) return isoDate(date);
+  const old = parseDate(previous);
+  const hours = old?.getHours() ?? 9;
+  const minutes = old?.getMinutes() ?? 0;
+  return `${isoDate(date)}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function dayStamp(date) { return date ? new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() : null; }
+function addMonths(date, amount) { return new Date(date.getFullYear(), date.getMonth() + amount, 1); }
+function monthsAgo(date, amount) { const target = addMonths(date, -amount); const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate(); return new Date(target.getFullYear(), target.getMonth(), Math.min(date.getDate(), lastDay)); }
+function startMonth(date) { return new Date(date.getFullYear(), date.getMonth(), 1); }
+function addDays(date, amount) { return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount); }
+function startOfYear(date) { return new Date(date.getFullYear(), 0, 1); }
+function startOfQuarter(date) { return new Date(date.getFullYear(), Math.floor(date.getMonth() / 3) * 3, 1); }
+
+function monthGrid(view) {
+  const first = startMonth(view);
+  const offset = (first.getDay() + 6) % 7;
+  const start = addDays(first, -offset);
+  return Array.from({ length: 42 }, (_, index) => addDays(start, index));
+}
+
+function formatDate(value, locale = 'en', options = {}) {
+  const date = parseDate(value);
+  if (!date) return '';
+  return date.toLocaleDateString(locale === 'bn' ? 'bn-BD' : 'en-BD', { day: '2-digit', month: 'short', year: 'numeric', ...options });
+}
+
+function useDismiss(open, setOpen, ref) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const down = (event) => { if (ref.current && !ref.current.contains(event.target)) setOpen(false); };
+    const key = (event) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', down);
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key); };
+  }, [open, ref, setOpen]);
+}
+
+export function DatePicker({ value = '', onChange, placeholder = 'Select date', min, max, disabled, className, name, locale = 'en', withTime = false, invalid = false }) {
+  const rootRef = useRef(null);
+  const dialogId = useId();
+  const selected = parseDate(value);
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState(() => startMonth(selected || new Date()));
+  useDismiss(open, setOpen, rootRef);
+  const display = selected ? `${formatDate(selected, locale)}${withTime ? ` · ${selected.toLocaleTimeString(locale === 'bn' ? 'bn-BD' : 'en-BD', { hour: '2-digit', minute: '2-digit' })}` : ''}` : '';
+
+  const choose = (date) => {
+    onChange?.(outputValue(date, withTime, value));
+    if (!withTime) setOpen(false);
+  };
+
+  return <div ref={rootRef} className={cn('relative', className)}>
+    {name ? <input type="hidden" name={name} value={value || ''} /> : null}
+    <PickerTrigger open={open} setOpen={(next) => { if (next) setView(startMonth(selected || new Date())); setOpen(next); }} disabled={disabled} invalid={invalid} dialogId={dialogId} empty={!selected} label={display || placeholder} />
+    {open ? <div id={dialogId} role="dialog" aria-label="Choose a date" className="absolute left-0 z-50 mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-md)]">
+      <MonthCalendar view={view} onViewChange={setView} selectedStart={selected} min={parseDate(min)} max={parseDate(max)} onSelect={choose} />
+      {withTime ? <div className="mt-3 flex items-end gap-3 border-t border-[var(--color-border)] pt-3"><label className="field flex-1"><span>Time</span><input type="time" value={value.match(/T(\d{2}:\d{2})/)?.[1] || '09:00'} onChange={(event) => onChange?.(`${isoDate(selected || new Date())}T${event.target.value}`)} /></label><button type="button" className="min-h-11 rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-4 text-sm font-semibold text-white" onClick={() => setOpen(false)}>Set date</button></div> : null}
+      <div className="mt-3 flex items-center justify-between border-t border-[var(--color-border)] pt-3 text-xs"><button type="button" className="font-semibold text-[var(--color-primary)]" onClick={() => choose(new Date())}>Today</button>{value ? <button type="button" className="text-[var(--color-muted)]" onClick={() => { onChange?.(''); setOpen(false); }}>Clear</button> : null}</div>
+    </div> : null}
+  </div>;
+}
+
+export function DateRangePicker({ value = { from: '', to: '' }, onChange, placeholder = 'Select date range', disabled, className, nameFrom, nameTo, locale = 'en', min, max, invalid = false }) {
+  const rootRef = useRef(null);
+  const dialogId = useId();
+  const committed = { from: value?.from || '', to: value?.to || '' };
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(committed);
+  const initial = parseDate(committed.from) || new Date();
+  const [view, setView] = useState(() => startMonth(initial));
+  useDismiss(open, setOpen, rootRef);
+
+  const from = parseDate(draft.from); const to = parseDate(draft.to);
+  const label = committed.from ? `${formatDate(committed.from, locale)} — ${committed.to ? formatDate(committed.to, locale) : '…'}` : placeholder;
+
+  const select = (date) => {
+    const next = isoDate(date);
+    if (!draft.from || draft.to || dayStamp(date) < dayStamp(from)) setDraft({ from: next, to: '' });
+    else setDraft({ from: draft.from, to: next });
+  };
+  const apply = () => { if (!draft.from || !draft.to) return; onChange?.(draft); setOpen(false); };
+  const preset = (getRange) => { const range = getRange(new Date()); setDraft({ from: isoDate(range.from), to: isoDate(range.to) }); setView(startMonth(range.from)); };
+
+  return <div ref={rootRef} className={cn('relative', className)}>
+    {nameFrom ? <input type="hidden" name={nameFrom} value={committed.from} /> : null}{nameTo ? <input type="hidden" name={nameTo} value={committed.to} /> : null}
+    <PickerTrigger open={open} setOpen={(next) => { setDraft(committed); setOpen(next); }} disabled={disabled} invalid={invalid} dialogId={dialogId} empty={!committed.from} label={label} />
+    {open ? <div id={dialogId} role="dialog" aria-label="Choose a date range" className="fixed inset-x-3 top-20 z-[70] max-h-[calc(100vh-6rem)] overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-md)] sm:absolute sm:inset-x-auto sm:left-0 sm:top-auto sm:mt-2 sm:w-[min(58rem,calc(100vw-3rem))]">
+      <div className="grid md:grid-cols-[170px_1fr]">
+        <aside className="border-b border-[var(--color-border)] p-2 md:border-b-0 md:border-r"><p className="px-3 py-2 text-[10px] font-bold uppercase tracking-[.12em] text-[var(--color-muted)]">Quick select</p><div className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-1">{PRESETS.map((item) => { const range = item.range(new Date()); const active = draft.from === isoDate(range.from) && draft.to === isoDate(range.to); return <button key={item.label} type="button" aria-pressed={active} className={cn('rounded-lg px-3 py-2 text-left text-xs font-medium transition hover:bg-[var(--color-primary-soft)] hover:text-[var(--color-primary)]', active && 'bg-[var(--color-primary-soft)] text-[var(--color-primary)]')} onClick={() => preset(item.range)}>{item.label}</button>; })}</div></aside>
+        <div><div className="grid gap-4 p-4 md:grid-cols-2"><MonthCalendar view={view} onViewChange={setView} selectedStart={from} selectedEnd={to} min={parseDate(min)} max={parseDate(max)} onSelect={select} /><MonthCalendar view={addMonths(view, 1)} onViewChange={(next) => setView(addMonths(next, -1))} selectedStart={from} selectedEnd={to} min={parseDate(min)} max={parseDate(max)} onSelect={select} /></div>
+          <div className="flex flex-col gap-3 border-t border-[var(--color-border)] p-4 sm:flex-row sm:items-center"><div className="flex flex-1 items-center gap-2"><DateReadout value={draft.from} label="Start date" /><span aria-hidden="true">→</span><DateReadout value={draft.to} label="End date" /></div><div className="flex justify-end gap-2"><button type="button" className="min-h-10 rounded-lg px-4 text-xs font-semibold hover:bg-[var(--color-surface-muted)]" onClick={() => setOpen(false)}>Cancel</button><button type="button" disabled={!draft.from || !draft.to} className="min-h-10 rounded-lg bg-[var(--color-primary)] px-5 text-xs font-semibold text-white disabled:opacity-40" onClick={apply}>Set dates</button></div></div>
+        </div>
+      </div>
+    </div> : null}
+  </div>;
+}
+
+function PickerTrigger({ open, setOpen, disabled, invalid, dialogId, empty, label }) {
+  return <button type="button" disabled={disabled} aria-haspopup="dialog" aria-expanded={open} aria-controls={dialogId} data-invalid={invalid || undefined} onClick={() => setOpen(!open)} className={cn('flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border bg-[var(--color-surface-raised)] px-3.5 text-left text-sm transition hover:border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:shadow-[var(--shadow-focus)] focus:outline-none disabled:opacity-50', invalid ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]', empty && 'text-[var(--color-muted)]')}><span className="truncate">{label}</span><CalendarDays size={16} className="shrink-0 text-[var(--color-muted)]" /></button>;
+}
+
+function MonthCalendar({ view, onViewChange, selectedStart, selectedEnd = null, min, max, onSelect }) {
+  const days = useMemo(() => monthGrid(view), [view]);
+  const start = dayStamp(selectedStart); const end = dayStamp(selectedEnd);
+  return <section className="min-w-0"><div className="mb-3 flex items-center justify-between"><button type="button" aria-label="Previous month" className="grid size-9 place-items-center rounded-lg hover:bg-[var(--color-surface-muted)]" onClick={() => onViewChange(addMonths(view, -1))}><ChevronLeft size={17} /></button><h3 className="text-sm font-bold">{MONTHS[view.getMonth()]} {view.getFullYear()}</h3><button type="button" aria-label="Next month" className="grid size-9 place-items-center rounded-lg hover:bg-[var(--color-surface-muted)]" onClick={() => onViewChange(addMonths(view, 1))}><ChevronRight size={17} /></button></div><div className="grid grid-cols-7 text-center">{WEEKDAYS.map((day) => <span key={day} className="py-1 text-[10px] font-bold text-[var(--color-muted)]">{day}</span>)}{days.map((date) => { const stamp = dayStamp(date); const inMonth = date.getMonth() === view.getMonth(); const selected = stamp === start || stamp === end; const inRange = start != null && end != null && stamp > start && stamp < end; const blocked = (min && stamp < dayStamp(min)) || (max && stamp > dayStamp(max)); return <button key={isoDate(date)} type="button" disabled={blocked} aria-label={date.toLocaleDateString('en-US', { dateStyle: 'full' })} aria-pressed={selected} onClick={() => onSelect(date)} className={cn('relative grid h-9 place-items-center text-xs transition', !inMonth && 'text-[var(--color-muted)]/35', inRange && 'bg-[var(--color-primary-soft)] text-[var(--color-primary)]', selected && 'rounded-lg bg-[var(--color-primary)] font-bold text-white', !selected && !inRange && !blocked && 'rounded-lg hover:bg-[var(--color-surface-muted)]', blocked && 'cursor-not-allowed opacity-25')}>{date.getDate()}</button>; })}</div></section>;
+}
+
+function DateReadout({ value, label }) { return <div className="min-w-0 flex-1 rounded-lg bg-[var(--color-surface-muted)] px-3 py-2"><span className="sr-only">{label}</span><span className="block truncate text-xs font-medium">{value || 'Select date'}</span></div>; }
+
+const PRESETS = [
+  { label: 'Last 7 days', range: (now) => ({ from: addDays(now, -6), to: now }) },
+  { label: 'Last 14 days', range: (now) => ({ from: addDays(now, -13), to: now }) },
+  { label: 'Last 30 days', range: (now) => ({ from: addDays(now, -29), to: now }) },
+  { label: 'Last 3 months', range: (now) => ({ from: monthsAgo(now, 3), to: now }) },
+  { label: 'Last 12 months', range: (now) => ({ from: monthsAgo(now, 12), to: now }) },
+  { label: 'Month to date', range: (now) => ({ from: startMonth(now), to: now }) },
+  { label: 'Quarter to date', range: (now) => ({ from: startOfQuarter(now), to: now }) },
+  { label: 'Year to date', range: (now) => ({ from: startOfYear(now), to: now }) },
+  { label: 'All time', range: (now) => ({ from: new Date(2016, 0, 1), to: now }) }
+];

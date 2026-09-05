@@ -5,7 +5,7 @@ import { CheckboxField, RadioGroup, SwitchField } from './choice';
 import { Input, Textarea } from './input';
 import { Combobox, MultiSelect, NativeSelect } from './select';
 import { OTPInput } from './otp';
-import { DatePicker } from './date-picker';
+import { DatePicker, DateRangePicker } from './date-picker';
 
 /** React Hook Form adapter for boolean and array-valued Radix checkboxes. */
 export function ControlledCheckbox({ name, control, rules, defaultValue = false, value: optionValue, ...props }) {
@@ -74,18 +74,24 @@ export function ControlledTextarea({ name, control, rules, defaultValue = '', ..
   return <Controller name={name} control={control} rules={rules} defaultValue={defaultValue} render={({ field, fieldState }) => <Textarea {...props} {...field} value={field.value ?? ''} invalid={props.invalid ?? fieldState.invalid} />} />;
 }
 
-export function ControlledNativeSelect({ name, control, rules, defaultValue = '', parseValue, ...props }) {
+export function ControlledSelect({ name, control, rules, defaultValue = '', parseValue, ...props }) {
   return <Controller name={name} control={control} rules={rules} defaultValue={defaultValue} render={({ field, fieldState }) => <NativeSelect {...props} {...field} value={field.value ?? ''} onChange={(event) => field.onChange(parseValue ? parseValue(event.target.value) : event.target.value)} invalid={props.invalid ?? fieldState.invalid} />} />;
 }
+
+export const ControlledNativeSelect = ControlledSelect;
 
 export function ControlledCombobox({ name, control, rules, defaultValue = '', ...props }) {
   return <Controller name={name} control={control} rules={rules} defaultValue={defaultValue} render={({ field, fieldState }) => <Combobox {...props} name={field.name} value={field.value ?? ''} onChange={field.onChange} invalid={props.invalid ?? fieldState.invalid} />} />;
 }
 
 export function ControlledMultiSelect({ name, control, rules, defaultValue = [], ...props }) {
-  return <Controller name={name} control={control} rules={rules} defaultValue={defaultValue} render={({ field, fieldState }) => <MultiSelect {...props} value={field.value ?? []} onChange={field.onChange} invalid={props.invalid ?? fieldState.invalid} />} />;
+  return <Controller name={name} control={control} rules={rules} defaultValue={defaultValue} render={({ field, fieldState }) => <MultiSelect {...props} name={field.name} value={field.value ?? []} onChange={field.onChange} invalid={props.invalid ?? fieldState.invalid} />} />;
 }
 
 export function ControlledDatePicker({ name, control, rules, defaultValue = '', ...props }) {
   return <Controller name={name} control={control} rules={rules} defaultValue={defaultValue} render={({ field, fieldState }) => <DatePicker {...props} name={field.name} value={field.value ?? ''} onChange={field.onChange} invalid={props.invalid ?? fieldState.invalid} />} />;
+}
+
+export function ControlledDateRangePicker({ name, control, rules, defaultValue = { from: '', to: '' }, ...props }) {
+  return <Controller name={name} control={control} rules={rules} defaultValue={defaultValue} render={({ field, fieldState }) => <DateRangePicker {...props} value={field.value ?? defaultValue} onChange={field.onChange} invalid={props.invalid ?? fieldState.invalid} />} />;
 }

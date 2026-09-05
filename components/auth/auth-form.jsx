@@ -84,17 +84,17 @@ export function AuthForm({ mode, locale, returnToDefault = null }) {
   }
 
   return (
-    <div className="mx-auto grid max-w-5xl overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-md)] lg:grid-cols-[.8fr_1.2fr]">
-      <aside className="relative hidden overflow-hidden bg-[var(--color-primary-strong)] p-9 text-white lg:flex lg:flex-col">
-        <span aria-hidden="true" className="absolute -bottom-24 -right-24 size-80 rounded-full border-[54px] border-white/[.06]" />
-        <Link href={`/${locale}`} className="relative inline-flex items-center gap-2 text-sm font-medium text-white/65 hover:text-white">
+    <div className="mx-auto grid max-w-4xl overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] lg:grid-cols-[1fr_.8fr]">
+      <aside className="relative order-2 hidden overflow-hidden bg-[#e9ded0] p-9 text-[#151719] lg:flex lg:flex-col">
+        <span aria-hidden="true" className="absolute -bottom-24 -right-24 size-80 rounded-full border-[54px] border-white/25" />
+        <Link href={`/${locale}`} className="relative inline-flex items-center gap-2 text-sm font-medium text-black/55 hover:text-black">
           <ArrowLeft size={16} />
           Back to the shop
         </Link>
         <div className="relative mt-auto">
-          <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-white/45">Your Elite account</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-black/45">Your Elite account</p>
           <h2 className="mt-4 text-3xl font-medium leading-tight tracking-[-.045em]">Keep every order in one calm place.</h2>
-          <ul className="mt-7 grid gap-3 text-sm text-white/65">
+          <ul className="mt-7 grid gap-3 text-sm text-black/60">
             <li className="flex items-center gap-2"><Check size={15} />Track orders and delivery</li>
             <li className="flex items-center gap-2"><Check size={15} />Manage returns and reviews</li>
             <li className="flex items-center gap-2"><Check size={15} />Save addresses securely</li>
@@ -102,9 +102,9 @@ export function AuthForm({ mode, locale, returnToDefault = null }) {
         </div>
       </aside>
 
-      <div className="p-7 sm:p-10 lg:p-12">
+      <div className="order-1 p-7 sm:p-10 lg:p-12">
         <p className="eyebrow">{isLogin ? 'Account access' : 'Join Elite Emporium'}</p>
-        <h1 className="page-title mt-3 text-[clamp(2.25rem,5vw,3.4rem)]">{isLogin ? 'Welcome back' : 'Create your account'}</h1>
+        <h1 className="mt-2 text-[clamp(2rem,5vw,3rem)] font-bold tracking-[-.055em]">{isLogin ? 'Welcome back!' : 'Create your account'}</h1>
         <p className="mt-3 max-w-[48ch] muted">
           {isLogin ? 'Sign in with your Bangladeshi phone number or email.' : 'Use a phone number or email. You can set up additional verification later.'}
         </p>

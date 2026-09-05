@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { ChevronRight, Heart, Menu, Search, ShoppingBag, UserRound, X } from 'lucide-react';
+import { ChevronRight, Crown, Heart, Home, Menu, Search, ShoppingBag, Store, UserRound, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { cartApi } from '@/lib/api/cart-api';
 import { wishlistApi } from '@/lib/api/wishlist-api';
@@ -47,8 +47,8 @@ export function Header({ locale, labels, menu, announcement }) {
           )}
         </div>
       ) : null}
-      <header className="sticky top-0 z-40 border-b border-[color-mix(in_srgb,var(--color-border)_76%,transparent)] bg-[color-mix(in_srgb,var(--color-bg)_88%,transparent)] backdrop-blur-2xl">
-        <div className="container flex min-h-[76px] items-center gap-4">
+      <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-white/95 backdrop-blur-xl">
+        <div className="container flex min-h-[68px] items-center gap-4">
           <IconButton
             icon={mobileOpen ? X : Menu}
             label={mobileOpen ? 'Close navigation' : 'Open navigation'}
@@ -58,10 +58,10 @@ export function Header({ locale, labels, menu, announcement }) {
             onClick={() => setMobileOpen((value) => !value)}
           />
           <Link href={`/${locale}`} className="group flex shrink-0 items-center gap-3" aria-label="Elite Emporium home">
-            <span className="grid size-10 place-items-center rounded-[.8rem] bg-[var(--color-primary)] text-sm font-semibold tracking-[-.08em] text-white transition group-hover:bg-[var(--color-primary-strong)]">EE</span>
+            <span className="grid size-9 place-items-center text-[var(--color-primary)] transition group-hover:scale-105"><Crown size={27} strokeWidth={1.7} /></span>
             <span className="hidden leading-none sm:block">
-              <span className="block text-[13px] font-bold tracking-[.14em]">ELITE</span>
-              <span className="mt-1 block text-[9px] font-semibold tracking-[.27em] text-[var(--color-muted)]">EMPORIUM</span>
+              <span className="block text-[12px] font-bold tracking-[.13em]">ELITE</span>
+              <span className="mt-1 block text-[9px] font-semibold tracking-[.2em] text-[var(--color-muted)]">EMPORIUM</span>
             </span>
           </Link>
           <nav aria-label="Main navigation" className="ml-4 hidden items-stretch self-stretch md:flex">
@@ -70,7 +70,7 @@ export function Header({ locale, labels, menu, announcement }) {
                 key={item.id}
                 href={localizedHref(item.url, locale)}
                 aria-current={isActive(item.url) ? 'page' : undefined}
-                className={`relative flex items-center px-3 text-[13px] font-semibold transition ${isActive(item.url) ? 'text-[var(--color-primary)] after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-[var(--color-primary)]' : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'}`}
+                className={`relative flex items-center px-3 text-[12px] font-semibold transition ${isActive(item.url) ? 'text-[var(--color-primary)] after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-[var(--color-primary)]' : 'text-[var(--color-text)] hover:text-[var(--color-primary)]'}`}
               >
                 {item.label}
               </Link>
@@ -120,8 +120,19 @@ export function Header({ locale, labels, menu, announcement }) {
           </div>
         ) : null}
       </header>
+      <nav aria-label="Mobile shortcuts" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[var(--color-border)] bg-white/96 px-2 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgb(20_18_15_/.08)] backdrop-blur-xl md:hidden">
+        <MobileShortcut href={`/${locale}`} label="Home" Icon={Home} active={pathname === `/${locale}`} />
+        <MobileShortcut href={`/${locale}/shop`} label="Shop" Icon={Store} active={pathname.startsWith(`/${locale}/shop`)} />
+        <MobileShortcut href={`/${locale}/wishlist`} label="Saved" Icon={Heart} count={wishlist.data?.itemCount} active={pathname.startsWith(`/${locale}/wishlist`)} />
+        <MobileShortcut href={auth.status === 'authenticated' ? `/${locale}/account` : `/${locale}/login`} label="Account" Icon={UserRound} active={pathname.includes('/account') || pathname.includes('/login')} />
+        <MobileShortcut href={`/${locale}/cart`} label="Bag" Icon={ShoppingBag} count={cart.data?.itemCount} active={pathname.startsWith(`/${locale}/cart`)} />
+      </nav>
     </>
   );
+}
+
+function MobileShortcut({ href, label, Icon, active, count = 0 }) {
+  return <Link href={href} className={`relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[9px] font-semibold ${active ? 'text-[var(--color-primary)]' : 'text-[var(--color-muted)]'}`}><span className="relative"><Icon size={18} />{count ? <i className="absolute -right-2 -top-1 grid min-h-3.5 min-w-3.5 place-items-center rounded-full bg-[var(--color-primary-strong)] px-1 text-[8px] not-italic text-white">{count}</i> : null}</span>{label}</Link>;
 }
 
 function UtilityLink({ href, label, count = 0, children }) {

@@ -33,11 +33,11 @@ export function TrackForm() {
   const stepIndex = result ? Math.max(0, TIMELINE_LABELS.indexOf(result.orderStatus?.replace('placed', 'placed') || '')) : 0;
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-3xl">
       <form onSubmit={submit}>
         <Card>
           <CardBody className="grid gap-4">
-            <h1 className="text-3xl font-black">Track your order</h1>
+            <p className="eyebrow">Order status</p><h1 className="text-3xl font-bold tracking-[-.045em]">Track your order</h1>
             <p className="text-[var(--color-muted)]">Enter the order reference and phone number used during checkout.</p>
             <Field label="Order reference" required>
               <Input required value={reference} onChange={(event) => setReference(event.target.value)} />

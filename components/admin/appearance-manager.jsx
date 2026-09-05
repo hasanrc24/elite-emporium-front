@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
 import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Field, FieldGroup, Input, NativeSelect, Skeleton } from '@/components/ui';
+import { AdminPageHeader } from './admin-page-header';
 
 const SECTION_TYPES = ['hero', 'banner', 'product_carousel', 'category_grid', 'collection_grid', 'countdown', 'testimonials', 'editorial', 'newsletter', 'blog_feed'];
 const STATUS_OPTIONS = [
@@ -12,13 +13,7 @@ const STATUS_OPTIONS = [
 ];
 
 function Heading({ title, body }) {
-  return (
-    <div>
-      <p className="text-sm uppercase tracking-widest text-[var(--color-primary)]">Appearance</p>
-      <h1 className="text-3xl font-black">{title}</h1>
-      <p className="mt-2 text-[var(--color-muted)]">{body}</p>
-    </div>
-  );
+  return <AdminPageHeader title={title} description={body} />;
 }
 
 export function AppearanceManager({ section }) {

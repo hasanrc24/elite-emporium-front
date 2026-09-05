@@ -11,10 +11,11 @@ export function AccountDashboard({ locale }) {
   const returns = useQuery({ queryKey: ['account', 'returns', { pageSize: 3 }], queryFn: () => accountApi.returns({ pageSize: 3 }) });
 
   return (
-    <div className="grid gap-8">
-      <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-6">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Summary title="Recent orders" value={orders.data?.meta?.total ?? '—'} href={`/${locale}/account/orders`} />
         <Summary title="Return requests" value={returns.data?.meta?.total ?? '—'} href={`/${locale}/account/returns`} />
+        <Summary title="Saved items" value="—" href={`/${locale}/wishlist`} />
       </div>
 
       <Card>
@@ -56,10 +57,10 @@ export function AccountDashboard({ locale }) {
 
 function Summary({ title, value, href }) {
   return (
-    <Link href={href} className="group rounded-[var(--radius-lg)] bg-[var(--color-surface-muted)] p-6 transition hover:-translate-y-0.5 hover:bg-[var(--color-primary-soft)]">
-      <p className="text-sm font-medium text-[var(--color-muted)]">{title}</p>
-      <p className="mt-3 text-4xl font-semibold tracking-[-.05em]" data-numeric>{value}</p>
-      <p className="mt-5 text-sm font-semibold text-[var(--color-primary)]">
+    <Link href={href} className="group rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-5 transition hover:border-[var(--color-primary)]">
+      <p className="text-xs font-medium text-[var(--color-muted)]">{title}</p>
+      <p className="mt-2 text-3xl font-semibold tracking-[-.05em]" data-numeric>{value}</p>
+      <p className="mt-4 text-xs font-semibold text-[var(--color-primary)]">
         View all <span className="inline-block transition group-hover:translate-x-1">→</span>
       </p>
     </Link>

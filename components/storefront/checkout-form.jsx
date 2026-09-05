@@ -138,7 +138,7 @@ export function CheckoutForm({ locale }) {
     <form
       onChange={() => { if (quote) { setQuote(null); setIdempotencyKey(null); } }}
       onSubmit={handleSubmit(review)}
-      className="grid gap-8 lg:grid-cols-[1fr_390px]"
+      className="grid items-start gap-8 lg:grid-cols-[1fr_380px]"
     >
       <Card>
         <CardBody className="grid gap-5">
@@ -209,7 +209,7 @@ export function CheckoutForm({ locale }) {
         </CardBody>
       </Card>
 
-      <aside className="card h-fit p-6">
+      <aside className="storefront-panel h-fit p-6 lg:sticky lg:top-24">
         <h2 className="text-xl font-bold">Review order</h2>
         {cart.data.items.map((item) => (
           <div key={item.id} className="mt-4 flex justify-between gap-4 text-sm">
@@ -234,11 +234,11 @@ export function CheckoutForm({ locale }) {
         )}
         {submitError ? <div className="mt-4"><Alert tone="error">{submitError}</Alert></div> : null}
         {quote ? (
-          <Button type="button" className="mt-6 w-full" loading={submitting} onClick={place}>
+          <Button type="button" className="mt-6 w-full !rounded-sm !bg-[#151719]" loading={submitting} onClick={place}>
             {quote.paymentMethod === 'bkash' ? 'Continue to bKash' : 'Place COD order'}
           </Button>
         ) : (
-          <Button type="submit" className="mt-6 w-full">Review totals</Button>
+          <Button type="submit" className="mt-6 w-full !rounded-sm !bg-[#151719]">Review totals</Button>
         )}
       </aside>
     </form>

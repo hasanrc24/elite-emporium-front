@@ -3,26 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
-import { Edit3, PackagePlus, Search, ShoppingBag } from 'lucide-react';
-import { browserApi, apiMessage } from '@/lib/api/browser-api';
-import { ActionMenu, Alert, Badge, Button, Card, CardBody, CardHeader, DataTable, Field, FormattedMoney, Input, NativeSelect, Skeleton, StatusBadge, Textarea } from '@/components/ui';
-
-const productDefaults = {
-  slug: '',
-  nameEn: '',
-  nameBn: '',
-  descriptionEn: '',
-  descriptionBn: '',
-  sku: '',
-  title: 'Default',
-  regularPrice: '',
-  costPrice: '',
-  stock: 0,
-  status: 'draft'
-};
+import { Download, Edit3, PackagePlus, Search, ShoppingBag } from 'lucide-react';
+import { browserApi } from '@/lib/api/browser-api';
+import { ActionMenu, Button, Card, DataTable, FormattedMoney, Input, StatusBadge } from '@/components/ui';
 
 const startingPrice = (variants) => {
   if (!variants?.length) return null;
@@ -33,16 +18,17 @@ const startingPrice = (variants) => {
 
 export function ProductManager() {
   const router = useRouter();
-  const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
   const products = useQuery({
     queryKey: ['admin', 'products'],
     queryFn: () => browserApi.get('/admin/products', { params: { pageSize: 100 } }).then((response) => response.data.data)
   });
 
-  const visible = products.data?.filter((product) =>
-    `${product.name || ''} ${product.slug || ''} ${(product.variants || []).map((variant) => variant.sku).join(' ')}`.toLowerCase().includes(search.toLowerCase())
-  ) || [];
+  const visible = products.data?.filter((product) => {
+    const matchesSearch = `${product.name || ''} ${product.slug || ''} ${(product.variants || []).map((variant) => variant.sku).join(' ')}`.toLowerCase().includes(search.toLowerCase());
+    return matchesSearch && (status === 'all' || product.status === status || (status === 'archived' && product.archivedAt));
+  }) || [];
 
   const columns = [
     {
@@ -50,8 +36,8 @@ export function ProductManager() {
       accessorKey: 'name',
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
-          <span className="grid size-10 place-items-center rounded-xl bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
-            <ShoppingBag size={18} />
+          <span className="grid size-11 place-items-center rounded-xl bg-[var(--color-surface-muted)] text-[var(--color-primary)]">
+            <ShoppingBag size={19} />
           </span>
           <div>
             <strong>{row.original.name}</strong>
@@ -60,6 +46,11 @@ export function ProductManager() {
           </div>
         </div>
       )
+    },
+    {
+      header: 'Type',
+      accessorKey: 'type',
+      cell: ({ row }) => <span className="text-xs capitalize text-[var(--color-muted)]">{row.original.type}</span>
     },
     {
       header: 'Status',
@@ -104,108 +95,27 @@ export function ProductManager() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="eyebrow">Catalog</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Products</h1>
-          <p className="mt-2 text-sm text-[var(--color-muted)]">Create, price, publish, archive, and manage every product and variant.</p>
+          <h1 className="text-2xl font-bold tracking-[-.035em]">Products</h1>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">Manage your store products and inventory.</p>
         </div>
-        <Button onClick={() => setShowForm((value) => !value)}>
-          {showForm ? 'Close editor' : (
-            <>
-              <PackagePlus size={17} /> Add product
-            </>
-          )}
-        </Button>
+        <Button asChild><Link href="/admin/products/new"><PackagePlus size={17} /> Add product</Link></Button>
       </div>
 
-      {showForm ? <ProductForm onCancel={() => setShowForm(false)} onCreated={() => { setShowForm(false); products.refetch(); }} /> : null}
-
       <Card>
-        <CardHeader
-          title="Product catalog"
-          description={`${products.data?.length || 0} products`}
-          action={
-            <Field label="Search" className="sm:w-72">
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, slug, or SKU…" />
-            </Field>
-          }
-        />
-        <DataTable columns={columns} data={visible} loading={products.isLoading} emptyTitle="No products" emptyDescription="Add a product to start your catalog." />
+        <div className="flex overflow-x-auto border-b border-[var(--color-border)] px-5">
+          {['all', 'published', 'draft', 'scheduled', 'archived'].map((value) => (
+            <button key={value} type="button" onClick={() => setStatus(value)} className={`border-b-2 px-3 py-4 text-xs font-semibold capitalize transition ${status === value ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]'}`}>
+              {value === 'all' ? 'All products' : value}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] p-4">
+          <div className="relative min-w-56 flex-1 sm:max-w-sm"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={15} /><Input aria-label="Search products" className="!min-h-10 !pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products…" /></div>
+          <Button asChild size="sm" variant="secondary" className="ml-auto"><Link href="/admin/exports"><Download size={15} /> Export</Link></Button>
+        </div>
+        <DataTable className="!rounded-none !border-0 !shadow-none" columns={columns} data={visible} loading={products.isLoading} onRowClick={(product) => router.push(`/admin/products/${product.id}`)} emptyTitle="No products" emptyDescription="Add a product to start your catalog." />
+        <div className="flex items-center justify-between border-t border-[var(--color-border)] px-5 py-3 text-xs text-[var(--color-muted)]"><span>Showing {visible.length} of {products.data?.length || 0} products</span><span>Page 1</span></div>
       </Card>
     </div>
-  );
-}
-
-function ProductForm({ onCreated, onCancel }) {
-  const { register, handleSubmit } = useForm({ defaultValues: productDefaults });
-  const create = useMutation({
-    mutationFn: (value) =>
-      browserApi.post('/admin/products', {
-        slug: value.slug,
-        type: 'simple',
-        status: value.status,
-        featured: false,
-        translations: {
-          en: { name: value.nameEn, shortDescription: '', description: value.descriptionEn },
-          bn: { name: value.nameBn, shortDescription: '', description: value.descriptionBn }
-        },
-        variants: [{
-          sku: value.sku,
-          title: value.title,
-          attributes: {},
-          regularPrice: value.regularPrice,
-          costPrice: value.costPrice || null,
-          salePrice: null,
-          stockPolicy: 'deny',
-          stock: Number(value.stock),
-          lowStockThreshold: 3,
-          isDefault: true
-        }]
-      }).then((response) => response.data.data),
-    onSuccess: onCreated
-  });
-
-  return (
-    <form onSubmit={handleSubmit((values) => create.mutate(values))}>
-      <Card>
-        <CardHeader title="New simple product" description="Start with the essentials, then add media, categories, SEO, and variant detail in the full editor." />
-        <CardBody className="grid gap-4 md:grid-cols-2">
-          <Field label="English name" required>
-            <Input required {...register('nameEn')} />
-          </Field>
-          <Field label="Bangla name" required>
-            <Input required {...register('nameBn')} />
-          </Field>
-          <Field label="URL slug" required>
-            <Input required pattern="[a-z0-9-]+" placeholder="elegant-linen-dress" {...register('slug')} />
-          </Field>
-          <Field label="SKU" required>
-            <Input required placeholder="EE-0001" {...register('sku')} />
-          </Field>
-          <Field label="Variant title" required>
-            <Input required {...register('title')} />
-          </Field>
-          <Field label="Regular price" required>
-            <Input required inputMode="decimal" {...register('regularPrice')} />
-          </Field>
-          <Field label="Cost price">
-            <Input inputMode="decimal" {...register('costPrice')} />
-          </Field>
-          <Field label="Opening stock">
-            <Input type="number" min={0} {...register('stock', { valueAsNumber: true })} />
-          </Field>
-          <Field label="English description" className="md:col-span-2">
-            <Textarea rows={4} {...register('descriptionEn')} />
-          </Field>
-          <Field label="Bangla description" className="md:col-span-2">
-            <Textarea rows={4} {...register('descriptionBn')} />
-          </Field>
-          {create.error ? <Alert tone="error">{apiMessage(create.error)}</Alert> : null}
-        </CardBody>
-        <div className="flex items-center gap-3 border-t border-[var(--color-border)] px-6 py-4">
-          <Button loading={create.isPending}>Create draft</Button>
-          <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        </div>
-      </Card>
-    </form>
   );
 }

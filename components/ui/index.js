@@ -5,7 +5,7 @@ const cn_local = cn;
 export { Button, LinkButton, IconButton, buttonClasses } from './button';
 export { Input, Textarea, Field, FieldGroup } from './input';
 export { Checkbox, CheckboxField, RadioGroup, RadioItem, Switch, SwitchField, Slider } from './choice';
-export { NativeSelect, Combobox, MultiSelect } from './select';
+export { Select, NativeSelect, Combobox, MultiSelect } from './select';
 export { OTPInput, QuantitySelector, FileUpload } from './otp';
 export { Card, CardHeader, CardBody, CardFooter, Separator, Stack, Row, Badge } from './card';
 export {
@@ -35,7 +35,7 @@ export {
 export { Alert, InlineError, Skeleton, Spinner, EmptyState, ErrorState } from './feedback';
 export { ToastViewport, pushToast, dismissToast } from './toast';
 export { DataTable, tableHeader } from './data-table';
-export { DatePicker } from './date-picker';
+export { DatePicker, DateRangePicker } from './date-picker';
 export {
   ControlledCheckbox,
   ControlledSwitch,
@@ -43,10 +43,12 @@ export {
   ControlledOTPInput,
   ControlledInput,
   ControlledTextarea,
+  ControlledSelect,
   ControlledNativeSelect,
   ControlledCombobox,
   ControlledMultiSelect,
-  ControlledDatePicker
+  ControlledDatePicker,
+  ControlledDateRangePicker
 } from './form-helpers';
 export { Money, StatusBadge, useFormatter, FormattedDate, FormattedMoney, Translate } from './format';
 export { ActionMenu, CopyButton, Kbd, Avatar, Progress, FilterChip, Banner, StatTile, Stepper } from './auxiliary';

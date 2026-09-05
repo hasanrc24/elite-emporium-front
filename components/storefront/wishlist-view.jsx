@@ -56,13 +56,13 @@ export function WishlistView({ locale }) {
   return (
     <div>
       {move.error ? <Alert tone="error">{apiMessage(move.error, move.error.message)}</Alert> : null}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {wishlist.data.items.map((item) => (
           <Card key={item.id} className="overflow-hidden">
-            <Link href={`/${locale}/product/${item.product.slug}`} className="relative block aspect-[4/3] bg-gradient-to-br from-rose-100 via-stone-50 to-amber-100">
+            <Link href={`/${locale}/product/${item.product.slug}`} className="relative block aspect-[4/5] bg-[var(--color-surface-muted)]">
               {item.image ? <Image src={item.image.url} alt={item.image.alt} fill sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover" /> : null}
             </Link>
-            <CardBody>
+            <CardBody className="!p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-bold"><Link href={`/${locale}/product/${item.product.slug}`}>{item.product.name}</Link></h2>

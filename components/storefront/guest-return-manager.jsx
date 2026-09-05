@@ -62,7 +62,7 @@ export function GuestReturnManager({ params }) {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-4xl font-black">Returns and exchanges</h1>
+      <p className="eyebrow">Customer care</p><h1 className="storefront-page-title mt-2">Returns and exchanges</h1>
       <p className="mt-2 text-[var(--color-muted)]">Use the order reference and checkout phone number. These details are checked together to protect your order.</p>
 
       <form className="card mt-7 grid gap-4 p-6 md:grid-cols-2" onSubmit={check}>

@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Card, CardBody, CardHeader, Field, FieldGroup, Input, NativeSelect, Skeleton, TabsContent, TabsList, TabsRoot, Textarea } from '@/components/ui';
+import { Alert, Button, Card, CardBody, CardHeader, DatePicker, Field, FieldGroup, Input, NativeSelect, Skeleton, TabsContent, TabsList, TabsRoot, Textarea } from '@/components/ui';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
+import { AdminPageHeader } from './admin-page-header';
 
 const translation = () => ({ title: '', excerpt: '', blocks: [], seoTitle: '', seoDescription: '' });
 const blank = (kind) => ({
@@ -80,15 +81,7 @@ function ContentEditorForm({ kind, id, initialContent }) {
 
   return (
     <div className="grid gap-5">
-      <Link href={`/admin/content/${kind}`} className="font-semibold text-[var(--color-primary)]">
-        ← {kind}
-      </Link>
-      <div>
-        <p className="text-sm uppercase tracking-widest text-[var(--color-primary)]">Structured CMS editor</p>
-        <h1 className="text-3xl font-black">
-          {isNew ? `New ${kind === 'pages' ? 'page' : 'post'}` : form.translations.en.title}
-        </h1>
-      </div>
+      <AdminPageHeader backHref={`/admin/content/${kind}`} backLabel={`Back to ${kind}`} title={isNew ? `New ${kind === 'pages' ? 'page' : 'post'}` : form.translations.en.title} description="Create structured bilingual content with revision history and controlled publishing." actions={<Button loading={save.isPending} onClick={() => save.mutate()}>{isNew ? 'Create' : 'Save changes'}</Button>} />
 
       <Card>
         <CardBody>
@@ -109,10 +102,10 @@ function ContentEditorForm({ kind, id, initialContent }) {
               />
             </Field>
             <Field label="Publish at">
-              <Input
-                type="datetime-local"
+              <DatePicker
+                withTime
                 value={form.publishAt ? String(form.publishAt).slice(0, 16) : ''}
-                onChange={(event) => setForm({ ...form, publishAt: event.target.value ? new Date(event.target.value).toISOString() : null })}
+                onChange={(value) => setForm({ ...form, publishAt: value ? new Date(value).toISOString() : null })}
               />
             </Field>
             {kind === 'posts' ? (

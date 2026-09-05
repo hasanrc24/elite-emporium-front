@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Archive, ArrowLeft, Plus, RefreshCw, RotateCcw, Search } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, CardBody, CardHeader, Checkbox, DataTable, Field, FieldGroup, FormattedDate, FormattedMoney, Input, MultiSelect, NativeSelect, Pagination, Skeleton, Switch, Textarea } from '@/components/ui';
+import { Alert, Button, Card, CardBody, CardHeader, Checkbox, DataTable, DatePicker, DateRangePicker, Field, FieldGroup, FormattedDate, FormattedMoney, Input, MultiSelect, NativeSelect, Pagination, Skeleton, StatusBadge, Switch, Textarea } from '@/components/ui';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
+import { AdminPageHeader } from './admin-page-header';
 
 const definitions = {
   categories: { title: 'Categories', eyebrow: 'Catalog', endpoint: '/admin/categories', columns: ['translations.en.name', 'slug', 'active', 'displayOrder'], detail: true, taxonomy: true },
@@ -54,6 +55,8 @@ const statusFilters = [
   { value: 'published', label: 'Published' }
 ];
 
+const dateFilterResources = new Set(['orders', 'payments', 'refunds', 'returns', 'shipments', 'audits', 'deliveries', 'exports', 'contacts', 'privacy', 'pages', 'posts']);
+
 function resolveDefinition(segments) {
   const joined = segments.join('/');
   const aliases = { 'content/pages': 'pages', 'content/posts': 'posts', 'appearance/home': 'home', 'appearance/theme': 'theme', 'appearance/menus': 'menus', 'contact-messages': 'contacts', 'privacy-requests': 'privacy', 'notification-deliveries': 'deliveries' };
@@ -70,22 +73,14 @@ export function ResourceConsole({ segments }) {
     : <ResourceList resource={resolved.resource} definition={resolved.definition} />;
 }
 
-function AdminHeading({ eyebrow, title, description }) {
-  return (
-    <div className="mt-2">
-      <p className="eyebrow">{eyebrow}</p>
-      <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">{title}</h1>
-      {description ? <p className="mt-2 max-w-2xl text-sm text-[var(--color-muted)]">{description}</p> : null}
-    </div>
-  );
-}
-
 function ResourceList({ resource, definition }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [creating, setCreating] = useState(false);
-  const params = useMemo(() => ({ page, pageSize: 25, ...(search ? { search } : {}), ...(status ? { status } : {}) }), [page, search, status]);
+  const supportsDateRange = definition.report || dateFilterResources.has(resource);
+  const params = useMemo(() => ({ page, pageSize: 25, ...(search ? { search } : {}), ...(status ? { status } : {}), ...(dateRange.from ? { from: dateRange.from } : {}), ...(dateRange.to ? { to: dateRange.to } : {}) }), [page, search, status, dateRange]);
   const query = useQuery({
     queryKey: ['admin-resource', resource, params],
     queryFn: () => browserApi.get(definition.endpoint, { params }).then((response) => response.data)
@@ -102,9 +97,10 @@ function ResourceList({ resource, definition }) {
 
   return (
     <div className="grid gap-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <AdminHeading eyebrow={definition.eyebrow} title={definition.title} description={`View and manage ${definition.title.toLowerCase()} from one workspace.`} />
-        <div className="flex flex-wrap gap-2">
+      <AdminPageHeader
+        title={definition.title}
+        description={`View and manage ${definition.title.toLowerCase()} from one workspace.`}
+        actions={<>
           {definition.taxonomy ? (
             <Button onClick={() => setCreating((value) => !value)}>
               <Plus size={17} />
@@ -119,25 +115,10 @@ function ResourceList({ resource, definition }) {
               <Link href="/admin/orders/new"><Plus size={17} />Create manual order</Link>
             </Button>
           ) : null}
-        </div>
-      </div>
+        </>}
+      />
 
       {creating && definition.taxonomy ? <TaxonomyEditor resource={resource} endpoint={definition.endpoint} onSaved={() => { setCreating(false); query.refetch(); }} /> : null}
-
-      <Card>
-        <CardBody className="flex flex-wrap items-end gap-3">
-          <Field label="Search" className="min-w-56 flex-1">
-            <Input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={`Search ${definition.title.toLowerCase()}…`} />
-          </Field>
-          <Field label="Status" className="min-w-44">
-            <NativeSelect value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} options={statusFilters} />
-          </Field>
-          <Button type="button" variant="outline" onClick={() => query.refetch()}>
-            <RefreshCw size={16} />
-            Refresh
-          </Button>
-        </CardBody>
-      </Card>
 
       {definition.adjustment ? <InventoryAdjustment onSaved={() => query.refetch()} /> : null}
       {definition.media ? <MediaUpload onSaved={() => query.refetch()} /> : null}
@@ -148,8 +129,15 @@ function ResourceList({ resource, definition }) {
 
       <Card>
         <CardHeader title={`All ${definition.title.toLowerCase()}`} description={`${query.data?.meta?.total ?? rows.length} records`} />
+        <div className="flex flex-wrap items-end gap-3 border-b border-[var(--color-border)] p-4">
+          <Field label="Search" className="min-w-56 flex-1 sm:max-w-sm"><Input className="!min-h-10" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={`Search ${definition.title.toLowerCase()}…`} /></Field>
+          <Field label="Status" className="min-w-40"><NativeSelect className="!min-h-10" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} options={statusFilters} /></Field>
+          {supportsDateRange ? <Field label="Date range" className="min-w-60"><DateRangePicker value={dateRange} onChange={(next) => { setDateRange(next); setPage(1); }} /></Field> : null}
+          <Button size="sm" type="button" variant="secondary" onClick={() => query.refetch()}><RefreshCw size={15} />Refresh</Button>
+        </div>
         <CardBody className="p-0">
           <DataTable
+            className="!rounded-none !border-0 !shadow-none"
             columns={[
               ...columnsDef,
               {
@@ -185,11 +173,12 @@ function ResourceList({ resource, definition }) {
 
 function renderCell(value, path) {
   if (value == null || value === '') return '—';
-  if (typeof value === 'boolean') return value ? 'Active' : 'Inactive';
+  if (typeof value === 'boolean') return <StatusBadge status={value ? 'active' : 'inactive'} />;
   if (Array.isArray(value)) return value.map((item) => (typeof item === 'object' ? item.name || item.key || item.slug || item.id : item)).join(', ') || '—';
   if (typeof value === 'object') return value.name || value.label || value.reference || JSON.stringify(value);
   if (/amount|price|total|revenue|grossPaid|fee|value/i.test(path) && /^\d+(\.\d+)?$/.test(String(value))) return <FormattedMoney value={String(value)} />;
   if (/At$/.test(path) && !Number.isNaN(Date.parse(String(value)))) return <FormattedDate value={value} withTime />;
+  if (/(^|\.)(status|orderStatus|paymentStatus|fulfillmentStatus)$/.test(path)) return <StatusBadge status={String(value)} />;
   return String(value).replaceAll('_', ' ');
 }
 
@@ -202,11 +191,7 @@ function ResourceDetail({ resource, definition, id }) {
   const row = query.data;
   return (
     <div className="grid gap-5">
-      <Link href={`/admin/${resource}`} className="inline-flex items-center gap-2 text-sm font-bold text-[var(--color-primary)]">
-        <ArrowLeft size={16} />
-        Back to {definition.title.toLowerCase()}
-      </Link>
-      <AdminHeading eyebrow={definition.eyebrow} title={row?.reference || row?.code || row?.translations?.en?.name || row?.name || row?.slug || definition.title} description="Review details and make authorized changes below." />
+      <AdminPageHeader backHref={`/admin/${resource}`} backLabel={`Back to ${definition.title.toLowerCase()}`} title={row?.reference || row?.code || row?.translations?.en?.name || row?.name || row?.slug || definition.title} description="Review details and make authorized changes below." />
       {query.error ? <Alert tone="error">{apiMessage(query.error)}</Alert> : null}
       {query.isLoading ? <Card><CardBody>Loading record…</CardBody></Card> : null}
       {row ? (
@@ -223,12 +208,12 @@ function ResourceDetail({ resource, definition, id }) {
 function DetailCards({ value, compact = false }) {
   if (compact) return null;
   return (
-    <div className="mt-6 grid gap-4 lg:grid-cols-2">
+    <div className="grid gap-4 lg:grid-cols-2">
       {Object.entries(value).filter(([, item]) => item != null).map(([key, item]) => (
-        <section key={key} className="card min-w-0 p-5">
-          <h2 className="text-xs font-black uppercase tracking-widest text-[var(--color-muted)]">{labelFor(key)}</h2>
+        <section key={key} className="admin-card min-w-0 p-5">
+          <h2 className="text-[10px] font-bold uppercase tracking-[.12em] text-[var(--color-muted)]">{labelFor(key)}</h2>
           {typeof item === 'object' ? (
-            <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--color-surface-muted)] p-4 text-xs">{JSON.stringify(item, null, 2)}</pre>
+            <div className="mt-3 max-h-80 overflow-auto rounded-xl bg-[var(--color-surface)] p-3"><pre className="whitespace-pre-wrap break-words text-xs leading-6 text-[var(--color-muted)]">{JSON.stringify(item, null, 2)}</pre></div>
           ) : (
             <p className="mt-2 break-words font-semibold capitalize">{renderCell(item, key)}</p>
           )}
@@ -322,10 +307,10 @@ function TaxonomyEditor({ resource, endpoint, row = null, onSaved }) {
           {resource === 'collections' ? (
             <>
               <Field label="Starts at">
-                <Input type="datetime-local" value={form.startsAt} onChange={(event) => update('startsAt', event.target.value)} />
+                <DatePicker withTime value={form.startsAt} onChange={(value) => update('startsAt', value)} />
               </Field>
               <Field label="Ends at">
-                <Input type="datetime-local" value={form.endsAt} onChange={(event) => update('endsAt', event.target.value)} />
+                <DatePicker withTime value={form.endsAt} onChange={(value) => update('endsAt', value)} min={form.startsAt} />
               </Field>
             </>
           ) : null}
@@ -520,7 +505,8 @@ function MediaUpload({ onSaved }) {
 
 function ExportRequest({ onSaved }) {
   const [report, setReport] = useState('orders');
-  const mutation = useMutation({ mutationFn: () => browserApi.post('/admin/exports', { report, filters: {} }), onSuccess: onSaved });
+  const [dateRange, setDateRange] = useState({ from: '', to: '' });
+  const mutation = useMutation({ mutationFn: () => browserApi.post('/admin/exports', { report, filters: dateRange }), onSuccess: onSaved });
   const options = ['orders', 'sales', 'products', 'inventory', 'customers', 'coupons', 'payments', 'returns', 'profit', 'audits'].map((value) => ({ value, label: value }));
   return (
     <Card>
@@ -528,6 +514,7 @@ function ExportRequest({ onSaved }) {
         <Field label="New export" className="min-w-44">
           <NativeSelect value={report} onChange={(event) => setReport(event.target.value)} options={options} />
         </Field>
+        <Field label="Date range" className="min-w-60"><DateRangePicker value={dateRange} onChange={setDateRange} /></Field>
         <Button loading={mutation.isPending} onClick={() => mutation.mutate()}>Queue CSV export</Button>
       </CardBody>
     </Card>

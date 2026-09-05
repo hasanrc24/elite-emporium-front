@@ -51,18 +51,19 @@ export function AccountShell({ locale, children }) {
   if (auth.status !== 'authenticated') return null;
 
   return (
-    <div className="container py-10 md:py-14">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-5">
+    <div className="container py-8 md:py-11">
+      <header className="mb-7 flex flex-wrap items-end justify-between gap-5">
         <div>
           <p className="eyebrow">My account</p>
-          <h1 className="page-title mt-2">Hello, {auth.user.name}</h1>
+          <h1 className="storefront-page-title mt-2">Welcome back, {auth.user.name.split(' ')[0]}!</h1>
         </div>
         <p className="max-w-sm text-sm leading-6 text-[var(--color-muted)]">
           Orders, returns, profile details, and privacy controls in one place.
         </p>
       </header>
 
-      <nav aria-label="Account" className="mb-9 flex gap-1 overflow-x-auto border-b border-[var(--color-border)] pb-px">
+      <div className="grid items-start gap-7 md:grid-cols-[190px_1fr]">
+      <nav aria-label="Account" className="flex gap-1 overflow-x-auto border-b border-[var(--color-border)] pb-px md:sticky md:top-24 md:grid md:overflow-visible md:rounded-[var(--radius-lg)] md:border md:bg-[var(--color-surface)] md:p-2">
         {links.map(([suffix, label]) => {
           const href = `${base}${suffix}`;
           const active = pathname === href || (suffix && pathname.startsWith(`${href}/`));
@@ -72,10 +73,10 @@ export function AccountShell({ locale, children }) {
               href={href}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'relative whitespace-nowrap px-3 py-3 text-sm font-medium transition',
+                'relative whitespace-nowrap px-3 py-2.5 text-xs font-medium transition md:rounded-[var(--radius-sm)]',
                 active
-                  ? 'text-[var(--color-primary)] after:absolute after:inset-x-2 after:bottom-[-1px] after:h-0.5 after:bg-[var(--color-primary)]'
-                  : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+                  ? 'text-[var(--color-primary)] after:absolute after:inset-x-2 after:bottom-[-1px] after:h-0.5 after:bg-[var(--color-primary)] md:bg-[var(--color-primary-soft)] md:after:hidden'
+                  : 'text-[var(--color-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]'
               )}
             >
               {label}
@@ -85,6 +86,7 @@ export function AccountShell({ locale, children }) {
       </nav>
 
       <section className="min-w-0">{children}</section>
+      </div>
     </div>
   );
 }

@@ -23,11 +23,11 @@ export function OrderList({ locale }) {
 
   return (
     <div className="grid gap-4">
-      <h2 className="text-2xl font-bold">Orders</h2>
+      <div><h2 className="text-xl font-bold">My orders</h2><p className="mt-1 text-xs text-[var(--color-muted)]">Review status, totals, and order details.</p></div>
       {list.length ? (
-        list.map((order) => (
-          <Card key={order.id}>
-            <CardBody className="flex flex-wrap items-center justify-between gap-4">
+        <div className="storefront-panel overflow-hidden">{list.map((order) => (
+          <div key={order.id} className="border-b border-[var(--color-border)] last:border-0">
+            <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
               <div className="grid gap-1">
                 <p className="text-sm text-[var(--color-muted)]">{order.reference}</p>
                 <StatusBadge status={order.orderStatus} />
@@ -39,9 +39,9 @@ export function OrderList({ locale }) {
                   View order →
                 </Link>
               </div>
-            </CardBody>
-          </Card>
-        ))
+            </div>
+          </div>
+        ))}</div>
       ) : (
         <EmptyState title="You have no account-linked orders yet" description="Guest orders can be tracked using the order reference and phone number." />
       )}

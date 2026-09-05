@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { BarChart3, Boxes, ClipboardList, FileText, Image, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquareText, PackageSearch, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Tags, Truck, UserCog, Users, Webhook, X } from 'lucide-react';
+import { BarChart3, Bell, Boxes, ClipboardList, Crown, FileText, Image, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquareText, PackagePlus, PackageSearch, PlusCircle, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Tags, Truck, UserCog, Users, Webhook, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth/auth-store';
 import { authApi } from '@/lib/api/auth-api';
 import { cn } from '@/lib/utils';
 import { Button, IconButton, NativeSelect } from '@/components/ui';
+import { ThemeToggle } from './theme-toggle';
 
 const links = [
   { href: '/admin', label: 'Dashboard', Icon: LayoutDashboard, permission: 'dashboard.view' },
@@ -48,10 +49,12 @@ const links = [
 const groups = [
   { label: 'Overview', test: ({ href }) => href === '/admin' },
   { label: 'Catalog', test: ({ href }) => ['/admin/products', '/admin/categories', '/admin/collections', '/admin/brands', '/admin/attributes', '/admin/inventory'].includes(href) },
-  { label: 'Commerce', test: ({ href }) => ['/admin/orders', '/admin/payments', '/admin/refunds', '/admin/returns', '/admin/shipments', '/admin/coupons'].includes(href) },
+  { label: 'Commerce', test: ({ href }) => ['/admin/orders', '/admin/payments', '/admin/refunds', '/admin/returns', '/admin/shipments'].includes(href) },
   { label: 'Customers', test: ({ href }) => ['/admin/customers', '/admin/privacy-requests', '/admin/contact-messages', '/admin/reviews'].includes(href) },
   { label: 'Store experience', test: ({ href }) => href.startsWith('/admin/content') || href.startsWith('/admin/appearance') || href === '/admin/media' },
-  { label: 'Insights', test: ({ href }) => ['/admin/reports', '/admin/exports'].includes(href) }
+  { label: 'Marketing & insights', test: ({ href }) => ['/admin/coupons', '/admin/reports', '/admin/exports'].includes(href) },
+  { label: 'Platform', test: ({ href }) => ['/admin/notifications', '/admin/notification-deliveries', '/admin/integrations', '/admin/webhooks'].includes(href) },
+  { label: 'Administration', test: ({ href }) => ['/admin/staff', '/admin/roles', '/admin/audits', '/admin/settings'].includes(href) }
 ];
 
 export function AdminShell({ children }) {
@@ -91,7 +94,7 @@ export function AdminShell({ children }) {
   const closeNavigation = () => setNavigationOpen(false);
 
   return (
-    <div className="min-h-screen bg-[#f4f5f1] lg:grid lg:grid-cols-[260px_1fr]">
+    <div className="admin-shell-bg min-h-screen lg:grid lg:grid-cols-[240px_1fr]">
       {navigationOpen ? (
         <button
           aria-label="Close navigation overlay"
@@ -100,13 +103,13 @@ export function AdminShell({ children }) {
         />
       ) : null}
 
-      <aside className={cn('fixed inset-y-0 left-0 z-50 flex w-[260px] -translate-x-full flex-col border-r border-white/5 bg-[#17312c] text-white transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0', navigationOpen && 'translate-x-0')}>
-        <div className="flex min-h-[76px] items-center justify-between border-b border-white/8 px-5">
+      <aside className={cn('admin-sidebar fixed inset-y-0 left-0 z-50 flex w-[240px] -translate-x-full flex-col border-r border-white/5 text-white transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0', navigationOpen && 'translate-x-0')}>
+        <div className="flex min-h-[68px] items-center justify-between border-b border-white/8 px-5">
           <Link href="/admin" onClick={closeNavigation} className="flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-[.7rem] bg-white text-xs font-semibold tracking-[-.08em] text-[#17312c]">EE</span>
+            <span className="grid size-9 place-items-center rounded-[.7rem] bg-[#d6a72e]/12 text-[#e9bb45]"><Crown size={23} /></span>
             <span className="leading-tight">
-              <span className="block text-[12px] font-semibold tracking-[.13em]">ELITE EMPORIUM</span>
-              <span className="mt-1 block text-[9px] font-medium uppercase tracking-[.18em] text-white/40">Owner workspace</span>
+              <span className="block text-[12px] font-bold tracking-[.14em]">ELITE</span>
+              <span className="block text-[12px] font-bold tracking-[.14em]">EMPORIUM</span>
             </span>
           </Link>
           <button className="grid size-10 place-items-center rounded-[var(--radius-sm)] hover:bg-white/10 lg:hidden" aria-label="Close navigation" onClick={closeNavigation}>
@@ -114,10 +117,10 @@ export function AdminShell({ children }) {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-5" aria-label="Administration">
+        <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Administration">
           {grouped.map((group) => (
             <div key={group.label} className="mb-6">
-              <p className="mb-1.5 px-3 text-[9px] font-semibold uppercase tracking-[.16em] text-white/35">{group.label}</p>
+              <p className="mb-1.5 px-3 text-[9px] font-semibold uppercase tracking-[.16em] text-white/32">{group.label}</p>
               <div className="grid gap-1">
                 {group.items.map(({ href, label, Icon }) => {
                   const active = href === '/admin' ? pathname === href : pathname.startsWith(href);
@@ -128,13 +131,12 @@ export function AdminShell({ children }) {
                       onClick={closeNavigation}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'flex items-center gap-3 rounded-[.7rem] px-3 py-2.5 text-[13px] font-medium text-white/62 transition hover:bg-white/[.07] hover:text-white',
-                        active && 'bg-white/[.11] text-white hover:bg-white/[.14]'
+                        'flex items-center gap-3 rounded-[.6rem] px-3 py-2 text-[12.5px] font-medium text-white/65 transition hover:bg-white/[.07] hover:text-white',
+                        active && 'bg-[#665ce7] text-white shadow-[0_8px_18px_rgb(63_52_190_/_25%)] hover:bg-[#7066ef]'
                       )}
                     >
                       <Icon size={17} strokeWidth={1.8} />
                       <span className="flex-1">{label}</span>
-                      {active ? <span className="size-1.5 rounded-full bg-white/75" /> : null}
                     </Link>
                   );
                 })}
@@ -142,6 +144,12 @@ export function AdminShell({ children }) {
             </div>
           ))}
         </nav>
+
+        <div className="mx-3 mb-3 rounded-xl border border-white/[.06] bg-white/[.035] p-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[.12em] text-white/42">Quick actions</p>
+          <Link href="/admin/orders/new" className="flex items-center gap-2 py-1.5 text-[11px] text-white/70 hover:text-white"><PlusCircle size={14} /> Create order</Link>
+          <Link href="/admin/products" className="flex items-center gap-2 py-1.5 text-[11px] text-white/70 hover:text-white"><PackagePlus size={14} /> Add product</Link>
+        </div>
 
         <div className="border-t border-white/8 p-3">
           <button
@@ -155,7 +163,7 @@ export function AdminShell({ children }) {
       </aside>
 
       <main className="min-w-0">
-        <header className="sticky top-0 z-30 flex min-h-[76px] items-center gap-3 border-b border-[var(--color-border)] bg-[#f4f5f1]/88 px-4 backdrop-blur-xl md:px-8">
+        <header className="admin-topbar sticky top-0 z-30 flex min-h-[68px] items-center gap-3 border-b border-[var(--color-border)] px-4 backdrop-blur-xl md:px-7">
           <IconButton
             icon={Menu}
             label="Open administration navigation"
@@ -163,20 +171,26 @@ export function AdminShell({ children }) {
             className="lg:hidden"
             onClick={() => setNavigationOpen(true)}
           />
-          <div className="min-w-0">
+          <div className="min-w-0 lg:hidden">
             <p className="text-[9px] font-semibold uppercase tracking-[.14em] text-[var(--color-muted)]">Administration</p>
             <p className="truncate text-sm font-semibold">{activeLink?.label || 'Workspace'}</p>
           </div>
-          <div className="relative ml-auto hidden w-full max-w-xs md:block">
+          <div className="relative ml-auto hidden w-full max-w-[520px] md:block lg:ml-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={16} />
             <NativeSelect
               aria-label="Jump to administration section"
               className="!pl-10 !min-h-10 text-sm"
               value={activeLink?.href || ''}
               onChange={(event) => event.target.value && router.push(event.target.value)}
-              options={[{ value: '', label: 'Find a section…' }, ...permitted.map(({ href, label }) => ({ value: href, label }))]}
+              options={[{ value: '', label: 'Search orders, customers, products…' }, ...permitted.map(({ href, label }) => ({ value: href, label }))]}
             />
           </div>
+          <span className="ml-auto hidden text-xs font-semibold text-[var(--color-muted)] xl:block">EN</span>
+          <ThemeToggle />
+          <button type="button" aria-label="Notifications" className="relative grid size-10 place-items-center rounded-xl text-[var(--color-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]">
+            <Bell size={18} />
+            <span className="absolute right-2 top-2 size-2 rounded-full bg-[var(--color-danger)] ring-2 ring-[var(--color-surface-raised)]" />
+          </button>
           <div className="ml-2 hidden text-right sm:block">
             <p className="max-w-44 truncate text-sm font-semibold">{auth.user.name}</p>
             <p className="text-[11px] text-[var(--color-muted)]">Owner / administrator</p>
@@ -186,7 +200,7 @@ export function AdminShell({ children }) {
           </span>
         </header>
 
-        <div className="p-4 md:p-8 lg:p-10 xl:p-12">{children}</div>
+        <div className="p-4 md:p-7 xl:p-8">{children}</div>
       </main>
     </div>
   );

@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { browserApi, apiMessage } from '@/lib/api/browser-api';
 import { Alert, Banner, Button, Card, CardBody, CardHeader, Field, FieldGroup, FormattedMoney, Input, NativeSelect, Skeleton, Textarea } from '@/components/ui';
+import { AdminPageHeader } from './admin-page-header';
 
 const blankForm = () => ({
   customer: { name: '', phone: '', email: '' },
@@ -51,11 +52,7 @@ export function ManualOrderEditor() {
 
   return (
     <div className="grid gap-5">
-      <div>
-        <p className="text-sm uppercase tracking-widest text-[var(--color-primary)]">Orders</p>
-        <h1 className="text-3xl font-black">Create manual order</h1>
-        <p className="mt-2 text-[var(--color-muted)]">Create a draft for review or place a COD order with transactional stock reservation. Overrides are audited and permission-controlled.</p>
-      </div>
+      <AdminPageHeader backHref="/admin/orders" backLabel="Back to orders" title="Create manual order" description="Create a draft for review or place a COD order with transactional stock reservation. Overrides are audited and permission-controlled." />
 
       <Card>
         <CardHeader title="Customer and delivery" />

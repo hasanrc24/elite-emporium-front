@@ -6,6 +6,7 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import Decimal from 'decimal.js';
 import { Alert, Button, Card, CardBody, CardHeader, Checkbox, ControlledCheckbox, Field, Input, NativeSelect, Textarea } from '@/components/ui';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
+import { AdminPageHeader } from './admin-page-header';
 
 const groupFields = {
   store: [['name.en', 'Store name (English)'], ['name.bn', 'Store name (Bangla)'], ['contactPhone', 'Contact phone'], ['contactEmail', 'Contact email'], ['address', 'Address'], ['whatsappUrl', 'WhatsApp HTTPS URL']],
@@ -50,7 +51,8 @@ export function SettingsManager() {
   const methods = shipping.data.methods.filter((method) => !method.archivedAt);
 
   return (
-    <div className="grid gap-10">
+    <div className="grid gap-6">
+      <AdminPageHeader title="Settings" description="Control delivery, checkout, inventory, security, notifications, SEO, and storefront behavior." />
       <DeliveryEditor
         methods={methods}
         onSaved={(savedMethods) => {
@@ -59,11 +61,10 @@ export function SettingsManager() {
         }}
       />
 
-      <section>
-        <h2 className="text-2xl font-black">Business settings</h2>
-        <p className="mt-2 text-[var(--color-muted)]">Each group is validated, versioned, and audited by the backend.</p>
+      <section className="grid gap-4">
+        <div><h2 className="text-lg font-bold">Business settings</h2><p className="mt-1 text-sm text-[var(--color-muted)]">Each group is validated, versioned, and audited by the backend.</p></div>
         {groups.error ? <Alert tone="error">{apiMessage(groups.error)}</Alert> : null}
-        <div className="mt-5 grid gap-5">
+        <div className="grid gap-3 lg:grid-cols-2">
           {groups.data?.map((group) => (
             <SettingGroup key={`${group.key}:${group.version}`} group={group} onSaved={() => { groups.refetch(); client.invalidateQueries({ queryKey: ['storefront-settings'] }); }} />
           ))}
@@ -83,8 +84,8 @@ function SettingGroup({ group, onSaved }) {
   if (!fields.length) return null;
 
   return (
-    <details className="card p-5">
-      <summary className="cursor-pointer text-lg font-bold capitalize">{group.key}</summary>
+    <details className="card p-5" open={group.key === 'store'}>
+      <summary className="cursor-pointer text-sm font-bold capitalize">{group.key}</summary>
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         {fields.map(([path, label, type = 'text', options]) => {
           const current = getPath(value, path);
@@ -154,12 +155,8 @@ function DeliveryEditor({ methods, onSaved }) {
   });
 
   return (
-    <div>
-      <div>
-        <p className="text-sm uppercase tracking-widest text-[var(--color-primary)]">Store controls</p>
-        <h1 className="text-3xl font-black">Delivery settings</h1>
-        <p className="mt-2 text-[var(--color-muted)]">Labels, rates, availability, and payment eligibility update checkout without a frontend deployment.</p>
-      </div>
+    <section className="grid gap-3">
+      <div><h2 className="text-lg font-bold">Delivery methods</h2><p className="mt-1 text-sm text-[var(--color-muted)]">Labels, rates, availability, and payment eligibility update checkout without a deployment.</p></div>
       <form onSubmit={handleSubmit((value) => save.mutate(value))}>
         <Card>
           <CardBody className="grid gap-5">
@@ -198,6 +195,6 @@ function DeliveryEditor({ methods, onSaved }) {
           </CardBody>
         </Card>
       </form>
-    </div>
+    </section>
   );
 }

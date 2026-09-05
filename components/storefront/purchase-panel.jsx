@@ -22,11 +22,11 @@ export function PurchasePanel({ product, locale }) {
   const disabled = !selected || (selected.stockPolicy === 'deny' && selected.availableQuantity < quantity);
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius-lg)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] ring-1 ring-[var(--color-border)]">
-      <div className="p-6">
+    <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="py-5">
         <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--color-muted)]">SKU · {selected?.sku}</p>
         <div className="mt-2 flex items-baseline gap-3" data-numeric>
-          <strong className="text-3xl font-semibold tracking-[-.04em] text-[var(--color-primary)]">{formatMoney(selected?.price, locale)}</strong>
+          <strong className="text-2xl font-bold tracking-[-.04em]">{formatMoney(selected?.price, locale)}</strong>
           {selected?.salePrice ? <del className="text-[var(--color-muted)]">{formatMoney(selected.regularPrice, locale)}</del> : null}
         </div>
 
@@ -39,7 +39,7 @@ export function PurchasePanel({ product, locale }) {
                 type="button"
                 onClick={() => setVariantId(variant.id)}
                 aria-pressed={variant.id === variantId}
-                className={`inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-sm)] border px-4 text-sm font-medium transition active:scale-[.98] ${variant.id === variantId ? 'border-[var(--color-primary)] bg-[var(--color-primary-soft)] text-[var(--color-primary)]' : 'border-[var(--color-border)] bg-white hover:border-[var(--color-border-strong)]'}`}
+                className={`inline-flex min-h-9 items-center gap-2 rounded-sm border px-3 text-xs font-medium transition active:scale-[.98] ${variant.id === variantId ? 'border-[#151719] bg-[#151719] text-white' : 'border-[var(--color-border)] bg-white hover:border-[var(--color-border-strong)]'}`}
               >
                 {variant.id === variantId ? <Check size={15} /> : null}
                 {variant.title}
@@ -66,14 +66,14 @@ export function PurchasePanel({ product, locale }) {
         {add.isSuccess ? <div className="mt-4"><Alert tone="success">Added to your cart.</Alert></div> : null}
 
         <div className="mt-5 grid gap-3">
-          <Button className="w-full" disabled={disabled} loading={add.isPending} onClick={() => add.mutate()}>
+          <Button className="w-full !rounded-sm !bg-[#151719]" disabled={disabled} loading={add.isPending} onClick={() => add.mutate()}>
             <ShoppingBag size={18} />
             Add to bag
           </Button>
           <WishlistButton productId={product.id} variantId={selected?.id || null} locale={locale} />
         </div>
       </div>
-      <div className="grid border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] sm:grid-cols-2">
+      <div className="grid border-t border-[var(--color-border)] sm:grid-cols-2">
         <p className="flex items-center gap-2 border-b border-[var(--color-border)] px-5 py-3 text-xs font-semibold sm:border-b-0 sm:border-r">
           <Truck size={16} className="text-[var(--color-primary)]" />
           Delivery across Bangladesh

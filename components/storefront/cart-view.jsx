@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState } from 'react';
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -55,15 +56,15 @@ export function CartView({ locale }) {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-      <section className="grid gap-3">
+    <div className="grid items-start gap-8 lg:grid-cols-[1fr_360px]">
+      <section className="storefront-panel overflow-hidden">
         {cart.data.notices?.length ? (
           <Alert tone="warning">Some cart details changed. Review item availability and prices before checkout.</Alert>
         ) : null}
         {cart.data.items.map((item) => (
-          <Card key={item.id}>
-            <CardBody className="grid grid-cols-[80px_1fr] gap-4">
-              <div className="rounded-lg bg-gradient-to-br from-rose-100 to-amber-100" />
+          <div key={item.id} className="border-b border-[var(--color-border)] last:border-0">
+            <div className="grid grid-cols-[88px_1fr] gap-4 p-4 sm:grid-cols-[110px_1fr]">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-[var(--radius-sm)] bg-[var(--color-surface-muted)]">{item.image ? <Image src={item.image.url} alt={item.image.alt || item.product.name} fill sizes="110px" className="object-cover" /> : null}</div>
               <div>
                 <div className="flex justify-between gap-3">
                   <div>
@@ -98,12 +99,12 @@ export function CartView({ locale }) {
                   </div>
                 </div>
               </div>
-            </CardBody>
-          </Card>
+            </div>
+          </div>
         ))}
       </section>
 
-      <aside className="card h-fit p-6">
+      <aside className="storefront-panel h-fit p-6 lg:sticky lg:top-24">
         <h2 className="text-xl font-bold">Order summary</h2>
         <div className="mt-5 grid gap-2 text-sm">
           <SummaryRow label="Subtotal" value={cart.data.totals.subtotal} locale={locale} />
@@ -130,7 +131,7 @@ export function CartView({ locale }) {
         </Field>
         {applyCoupon.error ? <Alert tone="error">{apiMessage(applyCoupon.error)}</Alert> : null}
 
-        <Button asChild className="mt-6 w-full" size="lg">
+        <Button asChild className="mt-6 w-full !rounded-sm !bg-[#151719]" size="lg">
           <Link href={`/${locale}/checkout`}>Checkout</Link>
         </Button>
       </aside>
