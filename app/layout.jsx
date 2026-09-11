@@ -18,5 +18,7 @@ export const metadata = {
 
 export default async function RootLayout({ children }) {
   const locale = (await headers()).get('x-ee-locale') || 'en';
-  return <html lang={locale} className={geist.variable}><body><a href="#main" className="skip-link">Skip to content</a><AppProviders>{children}</AppProviders></body></html>;
+  // The admin theme bootstrap intentionally updates data-theme from localStorage
+  // before hydration; suppress the expected root-attribute difference.
+  return <html lang={locale} className={geist.variable} suppressHydrationWarning><body><a href="#main" className="skip-link">Skip to content</a><AppProviders>{children}</AppProviders></body></html>;
 }

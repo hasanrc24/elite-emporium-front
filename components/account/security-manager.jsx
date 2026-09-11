@@ -25,7 +25,7 @@ import {
   Skeleton
 } from '@/components/ui';
 
-export function SecurityManager({ locale }) {
+export function SecurityManager({ locale, loginHref = `/${locale}/login` }) {
   const auth = useAuthStore();
   const client = useQueryClient();
   const router = useRouter();
@@ -53,7 +53,7 @@ export function SecurityManager({ locale }) {
               onClick={async () => {
                 await authApi.logoutAll();
                 client.clear();
-                router.replace(`/${locale}/login`);
+                router.replace(loginHref);
               }}
             >
               Sign out every device

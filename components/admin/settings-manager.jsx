@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
 import Decimal from 'decimal.js';
@@ -86,6 +87,13 @@ function SettingGroup({ group, onSaved }) {
   return (
     <details className="card p-5" open={group.key === 'store'}>
       <summary className="cursor-pointer text-sm font-bold capitalize">{group.key}</summary>
+      {group.key === 'store' ? (
+        <StoreLogoUpload
+          logo={value.logo}
+          storeName={value.name?.en || 'Store logo'}
+          onChange={(logo) => setValue({ ...value, logo })}
+        />
+      ) : null}
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         {fields.map(([path, label, type = 'text', options]) => {
           const current = getPath(value, path);
@@ -132,6 +140,57 @@ function SettingGroup({ group, onSaved }) {
       {save.error ? <div className="mt-4"><Alert tone="error">{apiMessage(save.error)}</Alert></div> : null}
       <Button className="mt-5" loading={save.isPending} onClick={() => save.mutate()}>Save {group.key}</Button>
     </details>
+  );
+}
+
+function StoreLogoUpload({ logo, storeName, onChange }) {
+  const [file, setFile] = useState(null);
+  const [altText, setAltText] = useState(logo?.altText || storeName);
+  const [inputKey, setInputKey] = useState(0);
+  const upload = useMutation({
+    mutationFn: () => {
+      const data = new FormData();
+      data.append('file', file);
+      data.append('privacy', 'public');
+      data.append('altText', altText || storeName);
+      return browserApi.post('/admin/media/upload', data).then((response) => response.data.data);
+    },
+    onSuccess: (asset) => {
+      onChange({ mediaId: asset.id, url: asset.url, altText: asset.altText || altText || storeName });
+      setFile(null);
+      setInputKey((key) => key + 1);
+    }
+  });
+
+  return (
+    <div className="mt-5 grid gap-4 rounded-[var(--radius-sm)] border border-[var(--color-border)] p-4 md:grid-cols-[160px_1fr]">
+      <div className="grid min-h-28 place-items-center rounded-[var(--radius-sm)] bg-[var(--color-surface-muted)] p-3">
+        {logo?.url ? (
+          <Image src={logo.url} alt={logo.altText || storeName} width={160} height={96} className="max-h-24 max-w-full object-contain" />
+        ) : (
+          <span className="text-xs font-semibold text-[var(--color-muted)]">No logo</span>
+        )}
+      </div>
+      <div className="grid gap-3">
+        <Field label="Store logo">
+          <Input key={inputKey} type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+        </Field>
+        <Field label="Logo alt text">
+          <Input value={altText} onChange={(event) => setAltText(event.target.value)} />
+        </Field>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" disabled={!file} loading={upload.isPending} onClick={() => upload.mutate()}>
+            Upload logo
+          </Button>
+          {logo ? (
+            <Button type="button" size="sm" variant="secondary" onClick={() => onChange(null)}>
+              Remove logo
+            </Button>
+          ) : null}
+        </div>
+        {upload.error ? <Alert tone="error">{apiMessage(upload.error, 'Logo could not be uploaded.')}</Alert> : null}
+      </div>
+    </div>
   );
 }
 

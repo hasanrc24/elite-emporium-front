@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { ChevronRight, Crown, Heart, Home, Menu, Search, ShoppingBag, Store, UserRound, X } from 'lucide-react';
@@ -16,7 +17,7 @@ function localizedHref(url, locale) {
   return `/${locale}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
-export function Header({ locale, labels, menu, announcement }) {
+export function Header({ locale, labels, menu, announcement, store }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const auth = useAuthStore();
@@ -32,6 +33,8 @@ export function Header({ locale, labels, menu, announcement }) {
         { id: 'track', label: labels.track, url: '/track-order' }
       ];
   const isActive = (url) => pathname === localizedHref(url, locale) || (url !== '/' && pathname.startsWith(localizedHref(url, locale)));
+  const storeName = store?.name?.[locale] || store?.name?.en || 'Elite Emporium';
+  const logo = store?.logo;
 
   return (
     <>
@@ -57,12 +60,18 @@ export function Header({ locale, labels, menu, announcement }) {
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((value) => !value)}
           />
-          <Link href={`/${locale}`} className="group flex shrink-0 items-center gap-3" aria-label="Elite Emporium home">
-            <span className="grid size-9 place-items-center text-[var(--color-primary)] transition group-hover:scale-105"><Crown size={27} strokeWidth={1.7} /></span>
-            <span className="hidden leading-none sm:block">
-              <span className="block text-[12px] font-bold tracking-[.13em]">ELITE</span>
-              <span className="mt-1 block text-[9px] font-semibold tracking-[.2em] text-[var(--color-muted)]">EMPORIUM</span>
-            </span>
+          <Link href={`/${locale}`} className="group flex shrink-0 items-center gap-3" aria-label={`${storeName} home`}>
+            {logo?.url ? (
+              <Image src={logo.url} alt={logo.altText || storeName} width={160} height={40} className="h-10 max-w-[160px] object-contain transition group-hover:scale-[1.02]" priority />
+            ) : (
+              <>
+                <span className="grid size-9 place-items-center text-[var(--color-primary)] transition group-hover:scale-105"><Crown size={27} strokeWidth={1.7} /></span>
+                <span className="hidden leading-none sm:block">
+                  <span className="block text-[12px] font-bold tracking-[.13em]">ELITE</span>
+                  <span className="mt-1 block text-[9px] font-semibold tracking-[.2em] text-[var(--color-muted)]">EMPORIUM</span>
+                </span>
+              </>
+            )}
           </Link>
           <nav aria-label="Main navigation" className="ml-4 hidden items-stretch self-stretch md:flex">
             {items.map((item) => (

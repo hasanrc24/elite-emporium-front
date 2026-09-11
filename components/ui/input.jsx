@@ -50,13 +50,13 @@ export function Field(props) {
   const id = htmlFor || `field-${autoId}`;
   const messageId = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
   const content = typeof children === 'function'
-    ? children({ id, describedBy: messageId, invalid: Boolean(error) })
+    ? children({ id, describedBy: messageId, invalid: Boolean(error) || undefined })
     : Children.map(children, (child, index) => {
         if (index !== 0 || !isValidElement(child)) return child;
         return cloneElement(child, {
           id: child.props.id || id,
           'aria-describedby': child.props['aria-describedby'] || messageId,
-          invalid: child.props.invalid ?? Boolean(error)
+          invalid: child.props.invalid ?? (Boolean(error) || undefined)
         });
       });
   return (

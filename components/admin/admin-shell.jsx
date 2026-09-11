@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { BarChart3, Bell, Boxes, ClipboardList, Crown, FileText, Image, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquareText, PackagePlus, PackageSearch, PlusCircle, RotateCcw, Search, Settings, ShieldCheck, ShoppingBag, Tags, Truck, UserCog, Users, Webhook, X } from 'lucide-react';
+import { BarChart3, Bell, Boxes, ClipboardList, Crown, FileText, Image, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquareText, PackageSearch, RotateCcw, Settings, ShieldCheck, ShoppingBag, Tags, Truck, UserCog, Users, Webhook, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth/auth-store';
 import { authApi } from '@/lib/api/auth-api';
 import { cn } from '@/lib/utils';
-import { Button, IconButton, NativeSelect } from '@/components/ui';
+import { DropdownItem, DropdownLabel, DropdownMenuRoot, DropdownSeparator, IconButton } from '@/components/ui';
 import { ThemeToggle } from './theme-toggle';
 
 const links = [
@@ -145,15 +145,20 @@ export function AdminShell({ children }) {
           ))}
         </nav>
 
-        <div className="mx-3 mb-3 rounded-xl border border-white/[.06] bg-white/[.035] p-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[.12em] text-white/42">Quick actions</p>
-          <Link href="/admin/orders/new" className="flex items-center gap-2 py-1.5 text-[11px] text-white/70 hover:text-white"><PlusCircle size={14} /> Create order</Link>
-          <Link href="/admin/products" className="flex items-center gap-2 py-1.5 text-[11px] text-white/70 hover:text-white"><PackagePlus size={14} /> Add product</Link>
-        </div>
-
         <div className="border-t border-white/8 p-3">
+          <Link
+            href="/admin/account"
+            onClick={closeNavigation}
+            className={cn(
+              'mb-1 flex w-full items-center gap-3 rounded-[.7rem] px-3 py-2.5 text-[13px] font-medium text-white/60 transition hover:bg-white/[.07] hover:text-white',
+              pathname === '/admin/account' && 'bg-white/[.1] text-white',
+            )}
+          >
+            <UserCog size={17} />
+            My account
+          </Link>
           <button
-            onClick={() => authApi.logout().then(() => router.replace('/en/login'))}
+            onClick={() => authApi.logout().then(() => router.replace('/admin/login'))}
             className="flex w-full items-center gap-3 rounded-[.7rem] px-3 py-2.5 text-[13px] font-medium text-white/60 transition hover:bg-white/[.07] hover:text-white"
           >
             <LogOut size={17} />
@@ -175,29 +180,47 @@ export function AdminShell({ children }) {
             <p className="text-[9px] font-semibold uppercase tracking-[.14em] text-[var(--color-muted)]">Administration</p>
             <p className="truncate text-sm font-semibold">{activeLink?.label || 'Workspace'}</p>
           </div>
-          <div className="relative ml-auto hidden w-full max-w-[520px] md:block lg:ml-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={16} />
-            <NativeSelect
-              aria-label="Jump to administration section"
-              className="!pl-10 !min-h-10 text-sm"
-              value={activeLink?.href || ''}
-              onChange={(event) => event.target.value && router.push(event.target.value)}
-              options={[{ value: '', label: 'Search orders, customers, products…' }, ...permitted.map(({ href, label }) => ({ value: href, label }))]}
-            />
-          </div>
           <span className="ml-auto hidden text-xs font-semibold text-[var(--color-muted)] xl:block">EN</span>
           <ThemeToggle />
           <button type="button" aria-label="Notifications" className="relative grid size-10 place-items-center rounded-xl text-[var(--color-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]">
             <Bell size={18} />
             <span className="absolute right-2 top-2 size-2 rounded-full bg-[var(--color-danger)] ring-2 ring-[var(--color-surface-raised)]" />
           </button>
-          <div className="ml-2 hidden text-right sm:block">
-            <p className="max-w-44 truncate text-sm font-semibold">{auth.user.name}</p>
-            <p className="text-[11px] text-[var(--color-muted)]">Owner / administrator</p>
-          </div>
-          <span className="grid size-9 shrink-0 place-items-center rounded-[.7rem] bg-[var(--color-primary)] text-xs font-semibold text-white">
-            {auth.user.name?.slice(0, 1)?.toUpperCase()}
-          </span>
+          <DropdownMenuRoot
+            trigger={
+              <button
+                type="button"
+                aria-label="Open account menu"
+                aria-haspopup="menu"
+                className="ml-2 flex items-center gap-2 rounded-xl p-1 text-left transition hover:bg-[var(--color-surface-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+              >
+                <span className="hidden min-w-0 sm:block">
+                  <span className="block max-w-44 truncate text-sm font-semibold">{auth.user.name}</span>
+                  <span className="block text-[11px] text-[var(--color-muted)]">Account menu</span>
+                </span>
+                <span className="grid size-9 shrink-0 place-items-center rounded-[.7rem] bg-[var(--color-primary)] text-xs font-semibold text-white">
+                  {auth.user.name?.slice(0, 1)?.toUpperCase()}
+                </span>
+              </button>
+            }
+          >
+            <DropdownLabel>{auth.user.name}</DropdownLabel>
+            <DropdownItem onSelect={() => router.push('/admin/account')}>
+              <UserCog size={16} />
+              My account
+            </DropdownItem>
+            {auth.user.permissions.includes('settings.manage') ? (
+              <DropdownItem onSelect={() => router.push('/admin/settings')}>
+                <Settings size={16} />
+                Store settings
+              </DropdownItem>
+            ) : null}
+            <DropdownSeparator />
+            <DropdownItem destructive onSelect={() => authApi.logout().then(() => router.replace('/admin/login'))}>
+              <LogOut size={16} />
+              Sign out
+            </DropdownItem>
+          </DropdownMenuRoot>
         </header>
 
         <div className="p-4 md:p-7 xl:p-8">{children}</div>
