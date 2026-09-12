@@ -59,8 +59,9 @@ export function CartView({ locale }) {
     <div className="grid items-start gap-8 lg:grid-cols-[1fr_360px]">
       <section className="storefront-panel overflow-hidden">
         {cart.data.notices?.length ? (
-          <Alert tone="warning">Some cart details changed. Review item availability and prices before checkout.</Alert>
+          <Alert tone="warning" title="Please review your bag">Some item availability or prices changed. Check each item before checkout.</Alert>
         ) : null}
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3"><p className="text-xs font-bold">{cart.data.itemCount} {cart.data.itemCount === 1 ? 'item' : 'items'} in your bag</p><Link href={`/${locale}/shop`} className="text-xs font-bold text-[var(--color-primary)]">Continue shopping →</Link></div>
         {cart.data.items.map((item) => (
           <div key={item.id} className="border-b border-[var(--color-border)] last:border-0">
             <div className="grid grid-cols-[88px_1fr] gap-4 p-4 sm:grid-cols-[110px_1fr]">
@@ -131,10 +132,11 @@ export function CartView({ locale }) {
         </Field>
         {applyCoupon.error ? <Alert tone="error">{apiMessage(applyCoupon.error)}</Alert> : null}
 
-        <Button asChild className="mt-6 w-full !rounded-sm !bg-[#151719]" size="lg">
+        <Button asChild className="mt-6 w-full !rounded-[var(--radius-sm)] !bg-[var(--color-primary-strong)]" size="lg">
           <Link href={`/${locale}/checkout`}>Checkout</Link>
         </Button>
       </aside>
+      <div className="fixed inset-x-3 bottom-[4.75rem] z-30 lg:hidden"><Button asChild size="lg" className="w-full !rounded-[var(--radius-sm)] !bg-[var(--color-primary-strong)] shadow-[var(--shadow-md)]"><Link href={`/${locale}/checkout`}>Checkout · <FormattedMoney value={cart.data.totals.subtotal} locale={locale} /></Link></Button></div>
     </div>
   );
 }

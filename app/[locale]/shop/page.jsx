@@ -21,9 +21,11 @@ export default async function ShopPage({ params, searchParams }) {
 
   return <div className="container py-8 md:py-11">
     <div className="mb-8 flex flex-wrap items-end justify-between gap-4"><div><p className="eyebrow">Elite collection</p><h1 className="storefront-page-title mt-2">All products</h1><p className="mt-2 text-sm text-[var(--color-muted)]">{result.meta?.total || 0} carefully selected pieces</p></div>{filterCount ? <Link href={`/${locale}/shop`} className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-primary)]"><X size={14} /> Clear {filterCount} filters</Link> : null}</div>
-    <div className="grid items-start gap-8 lg:grid-cols-[220px_1fr]">
+    <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden"><span className="text-xs font-bold">Refine your picks</span><span className="text-xs text-[var(--color-muted)]">{filterCount ? `${filterCount} filter${filterCount > 1 ? 's' : ''} on` : 'Choose what feels right'}</span></div>
+    {filterCount ? <div className="mb-5 flex flex-wrap gap-2" aria-label="Active filters">{Object.entries(filters).filter(([key]) => key !== 'page').map(([key, value]) => <Link key={key} href={`/${locale}/shop?${new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([candidate]) => candidate !== key && candidate !== 'page')))}`} className="inline-flex items-center gap-1 rounded-full bg-[var(--color-primary-soft)] px-3 py-1.5 text-xs font-bold text-[var(--color-primary-strong)]">{key === 'available' ? 'In stock' : key === 'sale' ? 'On sale' : `${key}: ${value}`} <X size={13} /></Link>)}</div> : null}
+    <div className="grid items-start gap-8 lg:grid-cols-[240px_1fr]">
       <details className="shop-filter storefront-panel lg:sticky lg:top-24">
-        <summary className="flex cursor-pointer list-none items-center justify-between p-4"><span className="flex items-center gap-2 text-sm font-bold"><SlidersHorizontal size={15} />Filter & sort</span>{filterCount ? <span className="rounded-full bg-[var(--color-primary)] px-2 py-0.5 text-[9px] font-bold text-white">{filterCount}</span> : <span className="text-xs text-[var(--color-muted)] lg:hidden">Open</span>}</summary>
+        <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between p-4"><span className="flex items-center gap-2 text-sm font-bold"><SlidersHorizontal size={16} />Filter & sort</span>{filterCount ? <span className="rounded-full bg-[var(--color-primary)] px-2.5 py-1 text-[10px] font-bold text-white">{filterCount} active</span> : <span className="text-xs text-[var(--color-muted)] lg:hidden">Open</span>}</summary>
         <form className="grid gap-5 border-t border-[var(--color-border)] p-4">
         <label className="field"><span>Search</span><div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" /><input className="!min-h-10 !pl-9 !text-xs" name="search" defaultValue={filters.search} placeholder="Product or style" /></div></label>
         <FilterSelect label="Category" name="category" value={filters.category} options={categories} />
@@ -32,7 +34,7 @@ export default async function ShopPage({ params, searchParams }) {
         <Field label="Sort by"><NativeSelect className="text-xs" name="sort" defaultValue={filters.sort || ''} options={[{ value: '', label: 'Newest' }, { value: 'price_asc', label: 'Price: low to high' }, { value: 'price_desc', label: 'Price: high to low' }, { value: 'rating', label: 'Top rated' }]} /></Field>
         <label className="flex items-center gap-2 text-xs font-medium"><input type="checkbox" name="available" value="true" defaultChecked={filters.available === 'true'} /> In stock only</label>
         <label className="flex items-center gap-2 text-xs font-medium"><input type="checkbox" name="sale" value="true" defaultChecked={filters.sale === 'true'} /> On sale</label>
-        <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-sm bg-[#151719] px-4 text-xs font-semibold text-white"><Search size={14} />Apply filters</button>
+        <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-primary-strong)] px-4 text-xs font-bold text-white"><Search size={14} />Show matching products</button>
         </form>
       </details>
 

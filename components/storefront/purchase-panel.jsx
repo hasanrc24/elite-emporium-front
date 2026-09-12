@@ -7,7 +7,8 @@ import { cartApi } from '@/lib/api/cart-api';
 import { apiMessage } from '@/lib/api/browser-api';
 import { formatMoney } from '@/lib/utils';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
-import { Check, ShieldCheck, ShoppingBag, Truck } from 'lucide-react';
+import Link from 'next/link';
+import { Check, CircleCheck, ShieldCheck, ShoppingBag, Truck } from 'lucide-react';
 
 export function PurchasePanel({ product, locale }) {
   const initial = product.variants.find((variant) => variant.isDefault) || product.variants[0];
@@ -22,16 +23,18 @@ export function PurchasePanel({ product, locale }) {
   const disabled = !selected || (selected.stockPolicy === 'deny' && selected.availableQuantity < quantity);
 
   return (
-    <div className="overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)]">
-      <div className="py-5">
-        <p className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--color-muted)]">SKU · {selected?.sku}</p>
-        <div className="mt-2 flex items-baseline gap-3" data-numeric>
-          <strong className="text-2xl font-bold tracking-[-.04em]">{formatMoney(selected?.price, locale)}</strong>
-          {selected?.salePrice ? <del className="text-[var(--color-muted)]">{formatMoney(selected.regularPrice, locale)}</del> : null}
+    <div className="purchase-card overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white shadow-[var(--shadow-sm)]">
+      <div className="p-5 sm:p-6">
+        <div className="mb-6 grid grid-cols-3 gap-2" aria-label="Add to bag steps">
+          {['Choose option', 'Set quantity', 'Add to bag'].map((step, index) => <div key={step} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.08em] text-[var(--color-muted)]"><span className={`grid size-7 shrink-0 place-items-center rounded-full ${index === 0 ? 'bg-[var(--color-primary-strong)] text-white' : 'bg-[var(--color-primary-soft)] text-[var(--color-primary)]'}`}>{index + 1}</span><span className="hidden sm:inline">{step}</span></div>)}
         </div>
+        <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[var(--color-muted)]">Your selection</p><p className="mt-1 text-xs text-[var(--color-muted)]">SKU · {selected?.sku || 'Select an option'}</p></div><div className="text-right" data-numeric>
+          <strong className="text-2xl font-bold tracking-[-.04em]">{formatMoney(selected?.price, locale)}</strong>
+          {selected?.salePrice ? <del className="ml-2 text-sm text-[var(--color-muted)]">{formatMoney(selected.regularPrice, locale)}</del> : null}
+        </div></div>
 
         <fieldset className="mt-6">
-          <legend className="text-sm font-semibold">Choose an option</legend>
+          <legend className="text-sm font-bold">1. Choose an option</legend>
           <div className="mt-3 flex flex-wrap gap-2">
             {product.variants.map((variant) => (
               <button
@@ -48,9 +51,9 @@ export function PurchasePanel({ product, locale }) {
           </div>
         </fieldset>
 
-        <div className="mt-5 max-w-32">
+        <div className="mt-5"><p className="text-sm font-bold">2. How many?</p><div className="mt-3 max-w-36">
           <QuantitySelector value={quantity} onChange={setQuantity} min={1} max={99} />
-        </div>
+        </div></div>
 
         <p className="mt-4 text-sm text-[var(--color-muted)]">
           {selected?.stockPolicy === 'deny'
@@ -63,17 +66,17 @@ export function PurchasePanel({ product, locale }) {
         </p>
 
         {add.error ? <div className="mt-4"><Alert tone="error">{apiMessage(add.error)}</Alert></div> : null}
-        {add.isSuccess ? <div className="mt-4"><Alert tone="success">Added to your cart.</Alert></div> : null}
+        {add.isSuccess ? <div className="mt-4"><Alert tone="success" action={<Button asChild size="sm" variant="secondary"><Link href={`/${locale}/cart`}>View bag</Link></Button>}><span className="inline-flex items-center gap-2"><CircleCheck size={16} /> Added to your bag.</span></Alert></div> : null}
 
         <div className="mt-5 grid gap-3">
-          <Button className="w-full !rounded-sm !bg-[#151719]" disabled={disabled} loading={add.isPending} onClick={() => add.mutate()}>
+          <Button className="w-full !rounded-[var(--radius-sm)] !bg-[var(--color-primary-strong)]" disabled={disabled} loading={add.isPending} onClick={() => add.mutate()}>
             <ShoppingBag size={18} />
-            Add to bag
+            {disabled && !selected ? 'Choose an option first' : disabled ? 'Currently unavailable' : '3. Add to bag'}
           </Button>
           <WishlistButton productId={product.id} variantId={selected?.id || null} locale={locale} />
         </div>
       </div>
-      <div className="grid border-t border-[var(--color-border)] sm:grid-cols-2">
+      <div className="grid border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] sm:grid-cols-2">
         <p className="flex items-center gap-2 border-b border-[var(--color-border)] px-5 py-3 text-xs font-semibold sm:border-b-0 sm:border-r">
           <Truck size={16} className="text-[var(--color-primary)]" />
           Delivery across Bangladesh
