@@ -7,6 +7,7 @@ export { Input, Textarea, Field, FieldGroup } from './input';
 export { Checkbox, CheckboxField, RadioGroup, RadioItem, Switch, SwitchField, Slider } from './choice';
 export { Select, NativeSelect, Combobox, MultiSelect } from './select';
 export { OTPInput, QuantitySelector, FileUpload } from './otp';
+export { ImageUpload } from './image-upload';
 export { Card, CardHeader, CardBody, CardFooter, Separator, Stack, Row, Badge } from './card';
 export {
   TabsRoot,

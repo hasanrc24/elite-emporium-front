@@ -3,9 +3,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { accountApi } from '@/lib/api/account-api';
 import { apiMessage } from '@/lib/api/browser-api';
-import { Alert, Badge, Button, Card, CardBody, ControlledSwitch, EmptyState, Field, FieldGroup, Input, Skeleton } from '@/components/ui';
+import { Alert, Badge, Button, Card, CardBody, EmptyState, Field, FieldGroup, Input, Skeleton } from '@/components/ui';
+import { Save } from 'lucide-react';
+import { pushToast, successToast, errorToast } from '@/components/ui/toast';
 
 const emptyAddress = {
   label: 'Home',
@@ -18,17 +22,36 @@ const emptyAddress = {
   postcode: '',
   landmark: '',
   isDefaultShipping: false,
-  isDefaultBilling: false
+  isDefaultBilling: false,
 };
 
-const toPayload = (values) => ({
-  ...values,
-  area: values.area || null,
-  district: values.district || null,
-  division: values.division || null,
-  postcode: values.postcode || null,
-  landmark: values.landmark || null
+const addressSchema = z.object({
+  label: z.string().min(1, 'Address label is required'),
+  recipientName: z.string().trim().min(2, 'Recipient name must be at least 2 characters'),
+  phone: z.string().trim().regex(/^\+?8801[0-9]{9}$/, 'Enter a valid Bangladeshi phone number').or(z.literal('')),
+  addressLine: z.string().trim().min(5, 'Delivery address is required'),
+  area: z.string().trim().max(120).optional(),
+  district: z.string().trim().max(120).optional(),
+  division: z.string().trim().max(120).optional(),
+  postcode: z.string().trim().max(20).optional(),
+  landmark: z.string().trim().max(255).optional(),
 });
+
+function defaultValues() {
+  return {
+    label: 'Home',
+    recipientName: '',
+    phone: '',
+    addressLine: '',
+    area: '',
+    district: '',
+    division: '',
+    postcode: '',
+    landmark: '',
+    isDefaultShipping: false,
+    isDefaultBilling: false,
+  };
+}
 
 export function AddressBook() {
   const client = useQueryClient();
@@ -64,7 +87,17 @@ export function AddressBook() {
       {addresses.data?.length ? (
         <div className="grid gap-4">
           {addresses.data.map((address) => (
-            <AddressCard key={address.id} address={address} onChanged={refresh} />
+            <div key={address.id} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] p-4">
+              <div className="grid gap-2">
+                <p className="font-semibold capitalize">{address.label}</p>
+                <p className="text-sm text-[var(--color-muted)]">
+                  {address.recipientName} · {address.phone} · {address.addressLine}
+                  {address.area && `, ${address.area}`}
+                  {address.district && `, ${address.district}`}
+                  {address.division && `, ${address.division}`}
+                </p>
+              </div>
+            </div>
           ))}
         </div>
       ) : (
@@ -74,108 +107,65 @@ export function AddressBook() {
   );
 }
 
-function AddressCard({ address, onChanged }) {
-  const [editing, setEditing] = useState(false);
-  const remove = useMutation({ mutationFn: () => accountApi.deleteAddress(address.id), onSuccess: onChanged });
-
-  if (editing) {
-    return <AddressForm initial={address} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />;
-  }
-
-  return (
-    <Card>
-      <CardBody className="flex flex-wrap items-start justify-between gap-4">
-        <div className="grid gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-bold">{address.label}</h3>
-            {address.isDefaultShipping ? <Badge tone="success">Default shipping</Badge> : null}
-            {address.isDefaultBilling ? <Badge tone="primary">Default billing</Badge> : null}
-          </div>
-          <p>{address.recipientName} · {address.phone}</p>
-          <p className="text-[var(--color-muted)]">{[address.addressLine, address.area, address.district, address.division, address.postcode].filter(Boolean).join(', ')}</p>
-          {address.landmark ? <p className="text-sm text-[var(--color-muted)]">Landmark: {address.landmark}</p> : null}
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setEditing(true)}>Edit</Button>
-          <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>Delete</Button>
-        </div>
-      </CardBody>
-      {remove.error ? (
-        <CardBody>
-          <Alert tone="error">{apiMessage(remove.error)}</Alert>
-        </CardBody>
-      ) : null}
-    </Card>
-  );
-}
-
-function AddressForm({ initial, onSaved, onCancel }) {
-  const form = useForm({ defaultValues: initial });
-  const editing = Boolean(initial.id);
-  const save = useMutation({
-    mutationFn: (values) =>
-      editing
-        ? accountApi.updateAddress(initial.id, { ...toPayload(values), version: initial.version })
-        : accountApi.createAddress(toPayload(values)),
-    onSuccess: onSaved
+function AddressForm({ initial, onCancel, onSaved }) {
+  const form = useForm({
+    resolver: zodResolver(addressSchema),
+    defaultValues: defaultValues(),
   });
 
+  const save = useMutation({
+    mutationFn: (values) => accountApi.createAddress(values),
+    onSuccess: (created) => {
+      successToast('Address created', 'Your new address has been saved');
+      onSaved(created);
+      form.reset(defaultValues());
+      setCreating(false);
+    },
+    onError: (error) => {
+      errorToast('Failed to create address', apiMessage(error, 'Could not create address'));
+      setCreating(false);
+    },
+  });
+
+  function handleSubmit(values) {
+    save.mutate(values);
+  }
+
+  if (form.formState.isSubmitting) return <div className="card p-8">Creating…</div>;
+
   return (
-    <form onSubmit={form.handleSubmit((values) => save.mutate(values))} className="card grid gap-4 p-5">
-      <h3 className="text-xl font-bold">{editing ? 'Edit address' : 'New address'}</h3>
-
-      <FieldGroup columns={2}>
-        <Field label="Label" required error={form.formState.errors.label?.message}>
-          <Input {...form.register('label')} required invalid={!!form.formState.errors.label} />
-        </Field>
-        <Field label="Recipient" required>
-          <Input autoComplete="name" required {...form.register('recipientName')} />
-        </Field>
-        <Field label="Phone" required>
-          <Input inputMode="tel" autoComplete="tel" required {...form.register('phone')} />
-        </Field>
-        <Field label="Address line" required className="sm:col-span-2">
-          <Input autoComplete="street-address" required {...form.register('addressLine')} />
-        </Field>
-        <Field label="Area">
-          <Input {...form.register('area')} />
-        </Field>
-        <Field label="District">
-          <Input {...form.register('district')} />
-        </Field>
-        <Field label="Division">
-          <Input {...form.register('division')} />
-        </Field>
-        <Field label="Postcode">
-          <Input autoComplete="postal-code" {...form.register('postcode')} />
-        </Field>
-        <Field label="Landmark" className="sm:col-span-2">
-          <Input {...form.register('landmark')} />
-        </Field>
-      </FieldGroup>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <ControlledSwitch
-          name="isDefaultShipping"
-          control={form.control}
-          id={`ship-${initial.id || 'new'}`}
-          label="Default shipping address"
-          description="Use for deliveries unless another address is chosen."
-        />
-        <ControlledSwitch
-          name="isDefaultBilling"
-          control={form.control}
-          id={`bill-${initial.id || 'new'}`}
-          label="Default billing address"
-          description="Use for invoices and refunds."
-        />
-      </div>
-
-      {save.error ? <Alert tone="error">{apiMessage(save.error)}</Alert> : null}
-
-      <div className="flex flex-wrap gap-3">
-        <Button type="submit" loading={save.isPending}>Save address</Button>
-        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+    <form onSubmit={form.handleSubmit(handleSubmit)} className="card p-6 grid gap-4">
+      <Field label="Address label" required error={form.formState.errors.label?.message}>
+        <Input {...form.register('label')} />
+      </Field>
+      <Field label="Recipient name" required error={form.formState.errors.recipientName?.message}>
+        <Input {...form.register('recipientName')} />
+      </Field>
+      <Field label="Phone" required error={form.formState.errors.phone?.message}>
+        <Input inputMode="tel" autoComplete="tel" {...form.register('phone')} />
+      </Field>
+      <Field label="Delivery address" required error={form.formState.errors.addressLine?.message}>
+        <Input {...form.register('addressLine')} />
+      </Field>
+      <Field label="Area (optional)" error={form.formState.errors.area?.message}>
+        <Input {...form.register('area')} />
+      </Field>
+      <Field label="District (optional)" error={form.formState.errors.district?.message}>
+        <Input {...form.register('district')} />
+      </Field>
+      <Field label="Division (optional)" error={form.formState.errors.division?.message}>
+        <Input {...form.register('division')} />
+      </Field>
+      <Field label="Postcode (optional)" error={form.formState.errors.postcode?.message}>
+        <Input {...form.register('postcode')} />
+      </Field>
+      <Field label="Landmark (optional)" error={form.formState.errors.landmark?.message}>
+        <Input {...form.register('landmark')} />
+      </Field>
+      <div>
+        <Button type="submit" loading={save.isPending}>
+          <Save size={16} className="mr-1" /> Save address
+        </Button>
       </div>
     </form>
   );

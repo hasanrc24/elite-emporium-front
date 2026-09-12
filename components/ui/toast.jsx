@@ -28,6 +28,22 @@ export function dismissToast(id) {
   useToastStore.getState().remove(id);
 }
 
+export function successToast(title, description) {
+  return pushToast({ tone: 'success', title, description, duration: 3500 });
+}
+
+export function errorToast(title, description) {
+  return pushToast({ tone: 'error', title, description, duration: 6000 });
+}
+
+export function warningToast(title, description) {
+  return pushToast({ tone: 'warning', title, description, duration: 5000 });
+}
+
+export function infoToast(title, description) {
+  return pushToast({ tone: 'info', title, description });
+}
+
 const ICONS = {
   info: Info,
   success: CheckCircle2,
@@ -62,9 +78,9 @@ export function ToastViewport({ className }) {
             <div className="grid flex-1 gap-1">
               {t.title ? <p className="text-sm font-semibold leading-5">{t.title}</p> : null}
               {t.description ? <p className="text-sm leading-5">{t.description}</p> : null}
-              {t.action ? <button type="button" onClick={() => { t.action.onClick?.(); remove(t.id); }} className="mt-1 text-xs font-semibold underline">{t.action.label}</button> : null}
+              {t.action ? <button type="button" onClick={() => { t.action.onClick?.(); dismissToast(t.id); }} className="mt-1 text-xs font-semibold underline">{t.action.label}</button> : null}
             </div>
-            <button type="button" aria-label="Dismiss" onClick={() => remove(t.id)} className="rounded-full p-1 text-[var(--color-muted)] hover:bg-[var(--color-surface-muted)]">
+            <button type="button" aria-label="Dismiss" onClick={() => dismissToast(t.id)} className="rounded-full p-1 text-[var(--color-muted)] hover:bg-[var(--color-surface-muted)]">
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>

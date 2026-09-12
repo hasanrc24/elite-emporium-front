@@ -7,12 +7,13 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import Decimal from 'decimal.js';
 import { Alert, Button, Card, CardBody, CardHeader, Checkbox, ControlledCheckbox, Field, Input, NativeSelect, Textarea } from '@/components/ui';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
+import { invalidateStorefrontSettings } from '@/app/actions/revalidate-settings';
 import { AdminPageHeader } from './admin-page-header';
 
 const groupFields = {
   store: [['name.en', 'Store name (English)'], ['name.bn', 'Store name (Bangla)'], ['contactPhone', 'Contact phone'], ['contactEmail', 'Contact email'], ['address', 'Address'], ['whatsappUrl', 'WhatsApp HTTPS URL']],
   ordering: [['minimumOrder', 'Minimum order', 'number'], ['maximumItemQuantity', 'Maximum item quantity', 'number'], ['allowGuestCheckout', 'Allow guest checkout', 'boolean'], ['orderPrefix', 'Order prefix']],
-  inventory: [['defaultStockPolicy', 'Default stock policy', 'select', ['deny', 'allow_backorder', 'preorder']], ['lowStockThreshold', 'Low stock threshold', 'number'], ['showExactStock', 'Show exact stock', 'boolean'], ['reservationMinutes', 'Reservation minutes', 'number']],
+  inventory: [['defaultStockPolicy', 'Default stock policy', 'select', ['deny', 'allow_backorder', 'preorder', 'available']], ['lowStockThreshold', 'Low stock threshold', 'number'], ['showExactStock', 'Show exact stock', 'boolean'], ['reservationMinutes', 'Reservation minutes', 'number']],
   checkout: [['termsPageSlug', 'Terms page slug'], ['orderNotesEnabled', 'Order notes', 'boolean'], ['requireTermsAcceptance', 'Require terms acceptance', 'boolean']],
   tax: [['enabled', 'Enable tax', 'boolean'], ['pricesIncludeTax', 'Prices include tax', 'boolean'], ['rate', 'Tax rate']],
   verification: [['requirePhoneVerification', 'Require phone verification', 'boolean'], ['requireEmailVerification', 'Require email verification', 'boolean'], ['staffMfaRequired', 'Require staff MFA', 'boolean']],
@@ -54,20 +55,21 @@ export function SettingsManager() {
   return (
     <div className="grid gap-6">
       <AdminPageHeader title="Settings" description="Control delivery, checkout, inventory, security, notifications, SEO, and storefront behavior." />
-      <DeliveryEditor
-        methods={methods}
-        onSaved={(savedMethods) => {
-          client.setQueryData(['admin', 'shipping'], { ...shipping.data, methods: shipping.data.methods.map((method) => savedMethods.find((saved) => saved.id === method.id) || method) });
-          client.invalidateQueries({ queryKey: ['storefront-settings'] });
-        }}
-      />
+<DeliveryEditor
+  methods={methods}
+  onSaved={async (savedMethods) => {
+    client.setQueryData(['admin', 'shipping'], { ...shipping.data, methods: shipping.data.methods.map((method) => savedMethods.find((saved) => saved.id === method.id) || method) });
+    client.invalidateQueries({ queryKey: ['storefront-settings'] });
+    await invalidateStorefrontSettings();
+  }}
+/>
 
       <section className="grid gap-4">
         <div><h2 className="text-lg font-bold">Business settings</h2><p className="mt-1 text-sm text-[var(--color-muted)]">Each group is validated, versioned, and audited by the backend.</p></div>
         {groups.error ? <Alert tone="error">{apiMessage(groups.error)}</Alert> : null}
         <div className="grid gap-3 lg:grid-cols-2">
           {groups.data?.map((group) => (
-            <SettingGroup key={`${group.key}:${group.version}`} group={group} onSaved={() => { groups.refetch(); client.invalidateQueries({ queryKey: ['storefront-settings'] }); }} />
+            <SettingGroup key={`${group.key}:${group.version}`} group={group} onSaved={async () => { groups.refetch(); client.invalidateQueries({ queryKey: ['storefront-settings'] }); await invalidateStorefrontSettings(); }} />
           ))}
         </div>
       </section>

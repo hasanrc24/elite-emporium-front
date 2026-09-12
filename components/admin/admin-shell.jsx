@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { BarChart3, Bell, Boxes, ClipboardList, Crown, FileText, Image, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquareText, PackageSearch, RotateCcw, Settings, ShieldCheck, ShoppingBag, Tags, Truck, UserCog, Users, Webhook, X } from 'lucide-react';
+import { BarChart3, Bell, Boxes, ClipboardList, Crown, FileText, Image as LucideImage, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquareText, PackageSearch, RotateCcw, Settings, ShieldCheck, ShoppingBag, Tags, Truck, UserCog, Users, Webhook, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth/auth-store';
 import { authApi } from '@/lib/api/auth-api';
 import { cn } from '@/lib/utils';
@@ -30,10 +31,10 @@ const links = [
   { href: '/admin/reviews', label: 'Reviews', Icon: MessageSquareText, permission: 'reviews.moderate' },
   { href: '/admin/content/pages', label: 'Pages', Icon: FileText, permission: 'cms.manage' },
   { href: '/admin/content/posts', label: 'Posts', Icon: FileText, permission: 'cms.manage' },
-  { href: '/admin/appearance/home', label: 'Homepage', Icon: Image, permission: 'cms.manage' },
+  { href: '/admin/appearance/home', label: 'Homepage', Icon: LucideImage, permission: 'cms.manage' },
   { href: '/admin/appearance/menus', label: 'Menus', Icon: Menu, permission: 'cms.manage' },
-  { href: '/admin/appearance/theme', label: 'Theme', Icon: Image, permission: 'cms.manage' },
-  { href: '/admin/media', label: 'Media', Icon: Image, permission: 'media.manage' },
+  { href: '/admin/appearance/theme', label: 'Theme', Icon: LucideImage, permission: 'cms.manage' },
+  { href: '/admin/media', label: 'Media', Icon: LucideImage, permission: 'media.manage' },
   { href: '/admin/reports', label: 'Reports', Icon: BarChart3, permission: 'reports.view' },
   { href: '/admin/exports', label: 'Exports', Icon: BarChart3, permission: 'reports.view' },
   { href: '/admin/notifications', label: 'Notifications', Icon: Megaphone, permission: 'notifications.manage' },
@@ -57,7 +58,7 @@ const groups = [
   { label: 'Administration', test: ({ href }) => ['/admin/staff', '/admin/roles', '/admin/audits', '/admin/settings'].includes(href) }
 ];
 
-export function AdminShell({ children }) {
+export function AdminShell({ children, store }) {
   const auth = useAuthStore();
   const pathname = usePathname();
   const router = useRouter();
@@ -93,6 +94,9 @@ export function AdminShell({ children }) {
     .filter((group) => group.items.length);
   const closeNavigation = () => setNavigationOpen(false);
 
+const storeName = store?.name?.en || store?.name?.bn || 'Elite Emporium';
+  const storeLogo = store?.logo;
+
   return (
     <div className="admin-shell-bg min-h-screen lg:grid lg:grid-cols-[240px_1fr]">
       {navigationOpen ? (
@@ -106,7 +110,11 @@ export function AdminShell({ children }) {
       <aside className={cn('admin-sidebar fixed inset-y-0 left-0 z-50 flex w-[240px] -translate-x-full flex-col border-r border-white/5 text-white transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0', navigationOpen && 'translate-x-0')}>
         <div className="flex min-h-[68px] items-center justify-between border-b border-white/8 px-5">
           <Link href="/admin" onClick={closeNavigation} className="flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-[.7rem] bg-[#d6a72e]/12 text-[#e9bb45]"><Crown size={23} /></span>
+            {storeLogo?.url ? (
+              <Image src={storeLogo.url} alt={storeLogo.altText || storeName} width={40} height={40} className="size-9 rounded-[.7rem] object-contain" priority />
+            ) : (
+              <span className="grid size-9 place-items-center rounded-[.7rem] bg-[#d6a72e]/12 text-[#e9bb45]"><Crown size={23} /></span>
+            )}
             <span className="leading-tight">
               <span className="block text-[12px] font-bold tracking-[.14em]">ELITE</span>
               <span className="block text-[12px] font-bold tracking-[.14em]">EMPORIUM</span>

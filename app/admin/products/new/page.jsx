@@ -1,4 +1,4 @@
-import { ProductEditor } from '@/components/admin/product-editor';
+import { QuickAddProduct } from '@/components/admin/quick-add-product';
 
 export const metadata = { title: 'Add product' };
-export default function NewProductPage() { return <ProductEditor />; }
+export default function NewProductPage() { return <QuickAddProduct />; }

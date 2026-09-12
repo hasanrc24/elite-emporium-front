@@ -1,59 +1,58 @@
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Alert, Button, Card, CardBody, Field, FieldGroup, Input, Textarea } from '@/components/ui';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
+import { pushToast, successToast, errorToast } from '@/components/ui/toast';
+
+const contactSchema = z.object({
+  name: z.string().trim().min(2, 'Name must be at least 2 characters'),
+  phone: z.string().trim().regex(/^\+?8801[0-9]{9}$/, 'Enter a valid Bangladeshi phone number').or(z.literal('')),
+  email: z.string().trim().email('Enter a valid email address').or(z.literal('')),
+  subject: z.string().trim().min(2, 'Subject must be at least 2 characters').max(200, 'Subject must be 200 characters or fewer'),
+  message: z.string().trim().min(10, 'Message must be at least 10 characters').max(5000, 'Message must be 5000 characters or fewer'),
+});
 
 export function ContactForm() {
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState('');
-  const form = useForm({ defaultValues: { name: '', phone: '', email: '', subject: '', message: '' } });
+  const form = useForm({
+    resolver: zodResolver(contactSchema),
+    defaultValues: { name: '', phone: '', email: '', subject: '', message: '' },
+  });
 
   async function submit(values) {
-    setError('');
     try {
       await browserApi.post('/contact', values);
-      setSent(true);
+      successToast('Message sent', 'Our team will respond using the contact details provided.');
       form.reset();
     } catch (caught) {
-      setError(apiMessage(caught));
+      errorToast('Message not sent', apiMessage(caught, 'Could not send your message'));
     }
-  }
-
-  if (sent) {
-    return (
-      <Card>
-        <CardBody>
-          <Alert>Your message was received. Our team will respond using the contact details provided.</Alert>
-          <Button className="mt-5" variant="secondary" onClick={() => setSent(false)}>Send another message</Button>
-        </CardBody>
-      </Card>
-    );
   }
 
   return (
     <form onSubmit={form.handleSubmit(submit)}>
       <Card>
         <CardBody className="grid gap-4">
-          <Field label="Name" required>
+          <Field label="Name" required error={form.formState.errors.name?.message}>
             <Input autoComplete="name" required {...form.register('name')} />
           </Field>
           <FieldGroup columns={2}>
-            <Field label="Phone">
+            <Field label="Phone" error={form.formState.errors.phone?.message}>
               <Input inputMode="tel" autoComplete="tel" {...form.register('phone')} />
             </Field>
-            <Field label="Email">
+            <Field label="Email" error={form.formState.errors.email?.message}>
               <Input type="email" autoComplete="email" {...form.register('email')} />
             </Field>
           </FieldGroup>
-          <Field label="Subject" required>
+          <Field label="Subject" required error={form.formState.errors.subject?.message}>
             <Input required minLength={2} {...form.register('subject')} />
           </Field>
-          <Field label="Message" required>
-            <Textarea required minLength={10} rows={6} {...form.register('message')} />
+          <Field label="Message" required error={form.formState.errors.message?.message}>
+            <Textarea required minLength={10} maxLength={5000} rows={6} {...form.register('message')} />
           </Field>
-          {error ? <Alert tone="error">{error}</Alert> : null}
+          {form.formState.errors.root?.message ? <Alert tone="error">{form.formState.errors.root.message}</Alert> : null}
           <div>
             <Button loading={form.formState.isSubmitting}>Send message</Button>
           </div>

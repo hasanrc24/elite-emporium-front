@@ -4,9 +4,12 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { apiMessage } from '@/lib/api/browser-api';
 import { reviewApi } from '@/lib/api/review-api';
 import { Alert, Button, Card, CardBody, EmptyState, Field, Input, NativeSelect, Skeleton, Textarea } from '@/components/ui';
+import { pushToast, successToast, errorToast } from '@/components/ui/toast';
 
 const RATINGS = [5, 4, 3, 2, 1].map((value) => ({ value: String(value), label: `${value} star${value === 1 ? '' : 's'}` }));
 
@@ -24,7 +27,11 @@ export function ReviewList({ locale }) {
   const reviews = useQuery({ queryKey: ['account', 'reviews'], queryFn: () => reviewApi.mine() });
   const remove = useMutation({
     mutationFn: (id) => reviewApi.remove(id),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['account', 'reviews'] })
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['account', 'reviews'] });
+      pushToast({ tone: 'success', title: 'Review deleted', description: 'Your review has been removed.' });
+    },
+    onError: (error) => pushToast({ tone: 'error', title: 'Could not delete review', description: apiMessage(error, 'Review could not be deleted.') })
   });
 
   if (reviews.isLoading) {
@@ -106,13 +113,24 @@ export function ReviewForm({ locale }) {
 }
 
 function ReviewEditor({ review, productId, orderItemId, onSaved }) {
-  const form = useForm({ defaultValues: { rating: review?.rating || 5, title: review?.title || '', body: review?.body || '' } });
+  const form = useForm({
+    resolver: zodResolver(z.object({
+      rating: z.coerce.number().int().min(1, 'Please select a rating').max(5, 'Rating cannot exceed 5'),
+      title: z.string().trim().max(180, 'Title must be 180 characters or fewer').optional().default(''),
+      body: z.string().trim().min(10, 'Review must be at least 10 characters').max(5000, 'Review must be 5000 characters or fewer'),
+    })),
+    defaultValues: { rating: review?.rating || 5, title: review?.title || '', body: review?.body || '' },
+  });
   const save = useMutation({
     mutationFn: (values) =>
       review
         ? reviewApi.update(review.id, { rating: Number(values.rating), title: values.title, body: values.body, mediaIds: [], version: review.version })
         : reviewApi.create({ productId, orderItemId, rating: Number(values.rating), title: values.title, body: values.body, mediaIds: [] }),
-    onSuccess: onSaved
+    onSuccess: () => {
+      successToast('Review submitted', 'Your review has been submitted for moderation');
+      onSaved();
+    },
+    onError: (error) => errorToast('Failed to submit review', apiMessage(error, 'Could not submit review')),
   });
 
   if (!review && (!productId || !orderItemId)) {
@@ -126,25 +144,25 @@ function ReviewEditor({ review, productId, orderItemId, onSaved }) {
         <p className="mt-1 text-sm text-[var(--color-muted)]">Reviews are linked to a fulfilled purchase and may require moderation.</p>
       </div>
 
-      <Field label="Rating">
+      <Field label="Rating" required error={form.formState.errors.rating?.message}>
         <NativeSelect
           {...form.register('rating', { valueAsNumber: true })}
           options={RATINGS}
         />
       </Field>
 
-      <Field label="Title (optional)">
+      <Field label="Title (optional)" error={form.formState.errors.title?.message}>
         <Input maxLength={180} {...form.register('title')} />
       </Field>
 
-      <Field label="Review" required>
-        <Textarea required minLength={1} maxLength={5000} rows={6} {...form.register('body')} />
+      <Field label="Review" required error={form.formState.errors.body?.message}>
+        <Textarea required minLength={10} maxLength={5000} rows={6} {...form.register('body')} />
       </Field>
 
       {save.error ? <Alert tone="error">{apiMessage(save.error)}</Alert> : null}
 
       <div>
-        <Button loading={save.isPending}>Submit review</Button>
+        <Button loading={save.isPending} type="submit">Submit review</Button>
       </div>
     </form>
   );

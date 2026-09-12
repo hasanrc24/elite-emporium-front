@@ -66,7 +66,7 @@ function normalizeProduct(product) {
       salePrice: variant.salePrice || '',
       costPrice: variant.costPrice || '',
       preorderMessage: variant.preorderMessage || '',
-      initialStock: 0,
+      initialStock: variant.inventory?.[0]?.onHand ?? 0,
       lowStockThreshold: variant.inventory?.[0]?.lowStockThreshold ?? 3
     })),
     media: product.media.map((item) => ({
@@ -111,6 +111,22 @@ export function ProductEditor({ id }) {
 function ProductEditorForm({ id, initialProduct, isNew }) {
   const router = useRouter();
   const [form, setForm] = useState(() => normalizeProduct(initialProduct));
+  const categories = useQuery({
+    queryKey: ['admin-product-editor-categories'],
+    queryFn: () => browserApi.get('/admin/categories', { params: { pageSize: 100 } }).then((response) => response.data.data)
+  });
+  const brands = useQuery({
+    queryKey: ['admin-product-editor-brands'],
+    queryFn: () => browserApi.get('/admin/brands', { params: { pageSize: 100 } }).then((response) => response.data.data)
+  });
+  const collections = useQuery({
+    queryKey: ['admin-product-editor-collections'],
+    queryFn: () => browserApi.get('/admin/collections', { params: { pageSize: 100 } }).then((response) => response.data.data)
+  });
+  const media = useQuery({
+    queryKey: ['admin-product-editor-media'],
+    queryFn: () => browserApi.get('/admin/media', { params: { pageSize: 100 } }).then((response) => response.data.data)
+  });
   const save = useMutation({
     mutationFn: () => (isNew ? browserApi.post('/admin/products', createPayload(form)) : browserApi.patch(`/admin/products/${id}`, payload(form))).then((response) => response.data.data),
     onSuccess: (saved) => {
@@ -179,8 +195,8 @@ function payload(form) {
       preorderAvailableAt: blank(variant.preorderAvailableAt),
       preorderMessage: blank(variant.preorderMessage),
       weightGrams: variant.weightGrams === '' ? null : variant.weightGrams == null ? null : Number(variant.weightGrams),
-      initialStock: Number(variant.initialStock || 0),
-      lowStockThreshold: Number(variant.lowStockThreshold || 0)
+      lowStockThreshold: Number(variant.lowStockThreshold || 0),
+      ...(variant.stockPolicy !== 'available' ? { initialStock: Number(variant.initialStock || 0) } : {}),
     })),
     media: form.media.map((item) => ({ mediaId: item.mediaId, role: item.role, displayOrder: item.displayOrder, variantKey: blank(item.variantKey), altEn: blank(item.altEn), altBn: blank(item.altBn) }))
   };
@@ -203,7 +219,7 @@ function createPayload(form) {
     shippingProfile: base.shippingProfile,
     translations: base.translations,
     attributes: base.attributes,
-    variants: base.variants.map(({ id: _id, clientKey: _clientKey, version: _version, initialStock, ...variant }) => ({ ...variant, stock: initialStock })),
+    variants: base.variants.map(({ id: _id, clientKey: _clientKey, version: _version, initialStock, ...variant }) => ({ ...variant, ...(variant.stockPolicy !== 'available' && { stock: initialStock }) })),
     media: base.media.map(({ variantKey: _variantKey, ...item }) => ({ ...item, variantSku: null }))
   };
 }
@@ -303,7 +319,17 @@ function VariantFields({ form, setForm }) {
         {form.variants.map((variant, index) => (
           <fieldset key={variant.id || variant.clientKey} className="grid gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] p-4 md:grid-cols-4">
             <legend className="px-2 font-bold">{variant.sku || `Variant ${index + 1}`}</legend>
-            {['sku', 'title', 'barcode', 'regularPrice', 'salePrice', 'costPrice', 'weightGrams', 'lowStockThreshold'].map((key) => (
+            {[
+                 'sku',
+                 'title',
+                 'barcode',
+                 'regularPrice',
+                 'salePrice',
+                 'costPrice',
+                 ...(variant.stockPolicy !== 'available' ? ['initialStock'] : []),
+                 'weightGrams',
+                 'lowStockThreshold'
+               ].map((key) => (
               <Field key={key} label={key.replaceAll(/([A-Z])/g, ' $1').toLowerCase()}>
                 <Input
                   required={['sku', 'title', 'regularPrice'].includes(key)}
@@ -317,7 +343,7 @@ function VariantFields({ form, setForm }) {
               <NativeSelect
                 value={variant.stockPolicy}
                 onChange={(event) => update(index, 'stockPolicy', event.target.value)}
-                options={['deny', 'allow_backorder', 'preorder'].map((value) => ({ value, label: value }))}
+                options={['deny', 'allow_backorder', 'preorder', 'available'].map((value) => ({ value, label: value }))}
               />
             </Field>
             <Field label="Attributes (key:value, comma separated)" className="md:col-span-2">

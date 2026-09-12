@@ -5,24 +5,18 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { accountApi } from '@/lib/api/account-api';
 import { apiMessage } from '@/lib/api/browser-api';
-import {
-  Alert,
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  EmptyState,
-  Field,
-  FormattedDate,
-  FormattedMoney,
-  Input,
-  NativeSelect,
-  Skeleton,
-  StatusBadge,
-  Textarea
-} from '@/components/ui';
+import { Alert, Button, Card, CardBody, CardHeader, EmptyState, Field, FormattedDate, FormattedMoney, Input, NativeSelect, Skeleton, StatusBadge, Textarea } from '@/components/ui';
+import { pushToast, successToast, errorToast } from '@/components/ui/toast';
+
+const returnSchema = z.object({
+  type: z.enum(['return', 'exchange'], { required_error: 'Select a request type', invalid_type_error: 'Select a request type' }),
+  reason: z.string().trim().min(3, 'Reason must be at least 3 characters').max(300, 'Reason must be 300 characters or fewer'),
+  customerNote: z.string().trim().max(1000, 'Details must be 1000 characters or fewer').optional().default(''),
+});
 
 export function ReturnList({ locale }) {
   const returns = useQuery({ queryKey: ['account', 'returns'], queryFn: () => accountApi.returns() });
@@ -70,7 +64,10 @@ export function NewReturn({ locale }) {
     queryFn: () => accountApi.returnEligibility(orderId),
     enabled: Boolean(orderId)
   });
-  const form = useForm({ defaultValues: { type: 'return', reason: '', customerNote: '' } });
+  const form = useForm({
+    resolver: zodResolver(returnSchema),
+    defaultValues: { type: 'return', reason: '', customerNote: '' },
+  });
 
   const create = useMutation({
     mutationFn: (values) => {
@@ -91,7 +88,11 @@ export function NewReturn({ locale }) {
         crypto.randomUUID()
       );
     },
-    onSuccess: (data) => router.replace(`/${locale}/account/returns/${data.id}`)
+    onSuccess: (data) => {
+      successToast('Return request created', 'Your request has been submitted');
+      router.replace(`/${locale}/account/returns/${data.id}`);
+    },
+    onError: (error) => errorToast('Failed to create return request', apiMessage(error, 'Could not create return request')),
   });
 
   if (!orderId) return <Alert tone="error">Choose an order before requesting a return.</Alert>;
@@ -156,7 +157,7 @@ export function NewReturn({ locale }) {
         </div>
       </fieldset>
 
-      <Field label="Request type">
+      <Field label="Request type" error={form.formState.errors.type?.message}>
         <NativeSelect
           {...form.register('type')}
           options={[
@@ -166,18 +167,18 @@ export function NewReturn({ locale }) {
         />
       </Field>
 
-      <Field label="Reason" required>
+      <Field label="Reason" required error={form.formState.errors.reason?.message}>
         <Input required minLength={3} {...form.register('reason')} />
       </Field>
 
-      <Field label="Additional details (optional)">
+      <Field label="Additional details (optional)" error={form.formState.errors.customerNote?.message}>
         <Textarea rows={4} {...form.register('customerNote')} />
       </Field>
 
       {create.error ? <Alert tone="error">{apiMessage(create.error, create.error.message)}</Alert> : null}
 
       <div>
-        <Button loading={create.isPending}>Submit request</Button>
+        <Button loading={create.isPending} type="submit">Submit request</Button>
       </div>
     </form>
   );
@@ -191,7 +192,9 @@ export function ReturnDetail({ id, locale }) {
     onSuccess: (data) => {
       client.setQueryData(['account', 'return', id], data);
       client.invalidateQueries({ queryKey: ['account', 'returns'] });
-    }
+      pushToast({ tone: 'success', title: 'Return request cancelled', description: 'The request has been cancelled.' });
+    },
+    onError: (error) => pushToast({ tone: 'error', title: 'Could not cancel return', description: apiMessage(error, 'Return could not be cancelled.') })
   });
 
   if (detail.isLoading) {
