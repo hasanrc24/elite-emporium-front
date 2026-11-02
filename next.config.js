@@ -19,6 +19,18 @@ const nextConfig = {
     ],
     dangerouslyAllowLocalIP: true,
   },
+  async headers() {
+    // Clickjacking and referrer hardening (FE-SEC-001); reset-password tokens live in the URL.
+    return [{
+      source: '/:path*',
+      headers: [
+        { key: 'X-Frame-Options', value: 'DENY' },
+        { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+        { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        { key: 'X-Content-Type-Options', value: 'nosniff' },
+      ],
+    }];
+  },
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${apiOrigin}/api/:path*` }];
   },

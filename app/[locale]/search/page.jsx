@@ -1,5 +1,40 @@
-import { ProductCard } from '@/components/storefront/product-card';
-import { serverGetEnvelope } from '@/lib/api/server-api';
+import { getTranslations } from 'next-intl/server';
+import { Search } from 'lucide-react';
+import { CatalogPage } from '@/components/storefront/catalog-page';
+
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Search' };
-export default async function SearchPage({ params, searchParams }) { const { locale } = await params; const query = await searchParams; const q = String(query.q || '').trim(); const result = q.length >= 2 ? await serverGetEnvelope(`/search?q=${encodeURIComponent(q)}&pageSize=24`, { locale, revalidate: 0 }).catch(() => ({ data: [], meta: null })) : { data: [], meta: null }; return <div className="container py-10 md:py-14"><p className="eyebrow">Discover</p><h1 className="storefront-page-title mt-2">Search products</h1><form className="mt-7 flex max-w-2xl gap-2"><label className="sr-only" htmlFor="q">Search products</label><input id="q" name="q" defaultValue={q} minLength={2} className="min-h-11 flex-1 rounded-sm border px-4" placeholder="What are you looking for?" /><button className="rounded-sm bg-[#151719] px-5 text-sm font-semibold text-white">Search</button></form>{q ? <p className="mt-7 text-sm text-[var(--color-muted)]">{result.meta?.total || 0} results for “{q}”</p> : <p className="mt-7 text-sm text-[var(--color-muted)]">Enter at least two characters.</p>}<div className="mt-5 grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-3 lg:grid-cols-4">{result.data.map((product) => <ProductCard key={product.id} product={product} locale={locale} />)}</div></div>; }
+
+export async function generateMetadata({ params }) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'Search' });
+  return { title: t('title'), robots: { index: false, follow: true } };
+}
+
+export default async function SearchPage({ params, searchParams }) {
+  const { locale } = await params;
+  const query = await searchParams;
+  const q = String(Array.isArray(query.q) ? query.q[0] : query.q || '').trim().slice(0, 80);
+  const t = await getTranslations({ locale, namespace: 'Search' });
+  const searching = q.length >= 2;
+  const form = (
+    <form role="search" action={`/${locale}/search`} className="mb-5 flex max-w-xl gap-2">
+      <label htmlFor="search-page-q" className="sr-only">{t('label')}</label>
+      <input id="search-page-q" name="q" type="search" defaultValue={q} minLength={2} maxLength={80} placeholder={t('placeholder')} className="flex-1" />
+      <button className="min-h-[2.875rem] rounded-[var(--radius-sm)] bg-[var(--color-text)] px-5 text-sm font-medium text-[var(--color-bg)]">{t('title')}</button>
+    </form>
+  );
+  // Without a usable term there is nothing to rank: prompt instead of listing the whole catalogue under a search heading.
+  if (!searching)
+    return (
+      <div className="container pb-16">
+        <header className="mb-4 mt-4 md:mb-6 md:mt-8"><h1 className="page-heading">{t('title')}</h1></header>
+        {form}
+        <div className="grid place-items-center gap-2 py-12 text-center" role="status"><Search size={28} className="text-[var(--color-muted)]" aria-hidden="true" /><p className="text-[16px] font-medium">{t('promptTitle')}</p><p className="max-w-sm text-[14px] text-[var(--color-muted)]">{q ? t('minChars') : t('promptBody')}</p></div>
+      </div>
+    );
+  return (
+    <CatalogPage locale={locale} searchParams={query} endpoint="/search" fixed={{ q }} searchTerm={q} eyebrow={t('title')} heading={`“${q}”`} listName="search">
+      {form}
+    </CatalogPage>
+  );
+}

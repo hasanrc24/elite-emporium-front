@@ -2,79 +2,99 @@
 
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { accountApi } from '@/lib/api/account-api';
-import { apiMessage } from '@/lib/api/browser-api';
+import { apiMessage, isRetryableFailure } from '@/lib/api/browser-api';
 import { Alert, Button, Card, CardBody, CardHeader, EmptyState, Field, FormattedDate, FormattedMoney, Input, NativeSelect, Skeleton, StatusBadge, Textarea } from '@/components/ui';
 import { pushToast, successToast, errorToast } from '@/components/ui/toast';
+import { useTableParams } from '@/lib/hooks/use-table-params';
+import { AccountList } from './list-parts';
 
-const returnSchema = z.object({
-  type: z.enum(['return', 'exchange'], { required_error: 'Select a request type', invalid_type_error: 'Select a request type' }),
-  reason: z.string().trim().min(3, 'Reason must be at least 3 characters').max(300, 'Reason must be 300 characters or fewer'),
-  customerNote: z.string().trim().max(1000, 'Details must be 1000 characters or fewer').optional().default(''),
-});
+const RETURNS_PAGE_SIZE = 10;
+
+// Reason codes from BR-RET-001; the code is stored as the request reason.
+export const RETURN_REASONS = ['size_too_small', 'size_too_large', 'damaged', 'wrong_item', 'not_as_pictured', 'changed_mind', 'other'];
+
+const returnSchema = (t) => z.object({
+  type: z.enum(['return', 'exchange']),
+  reason: z.enum(RETURN_REASONS, { error: t('errors.reason') }),
+  customerNote: z.string().trim().max(1000, t('errors.noteLength')).optional().default('')
+}).refine((value) => value.reason !== 'other' || value.customerNote.trim().length >= 3, { path: ['customerNote'], message: t('errors.otherNote') });
+
+const reasonLabel = (t, reason) => (RETURN_REASONS.includes(reason) ? t(`reasons.${reason}`) : reason);
 
 export function ReturnList({ locale }) {
-  const returns = useQuery({ queryKey: ['account', 'returns'], queryFn: () => accountApi.returns() });
-  if (returns.isLoading) {
-    return (
-      <Card>
-        <Skeleton className="h-32" />
-      </Card>
-    );
-  }
-  if (returns.error) return <Alert tone="error">{apiMessage(returns.error)}</Alert>;
-
-  const list = returns.data?.data || [];
+  const t = useTranslations('Account.returns');
+  const [params, setParams] = useTableParams({ page: 1 });
+  const returns = useQuery({ queryKey: ['account', 'returns', params.page], queryFn: () => accountApi.returns({ page: params.page, pageSize: RETURNS_PAGE_SIZE }), placeholderData: (previous) => previous });
+  const href = (item) => `/${locale}/account/returns/${item.id}`;
+  const columns = [
+    { id: 'reference', header: t('columns.request'), cell: ({ row }) => <Link href={href(row.original)} className="font-semibold text-[var(--color-primary)] hover:underline">{row.original.reference}</Link> },
+    { id: 'order', header: t('columns.order'), cell: ({ row }) => row.original.order.reference },
+    { id: 'type', header: t('columns.type'), cell: ({ row }) => t(`types.${row.original.type}`) },
+    { id: 'status', header: t('columns.status'), cell: ({ row }) => <StatusBadge status={row.original.status} locale={locale} /> },
+    { id: 'view', header: <span className="sr-only">{t('view')}</span>, meta: { align: 'right' }, cell: ({ row }) => <Link href={href(row.original)} aria-label={`${t('view')} ${row.original.reference}`} className="text-sm font-semibold text-[var(--color-primary)] hover:underline">{t('view')} →</Link> }
+  ];
   return (
     <div className="grid gap-4">
-      <h2 className="text-2xl font-bold">Returns and exchanges</h2>
-      {list.length ? (
-        list.map((item) => (
-          <Link
-            key={item.id}
-            href={`/${locale}/account/returns/${item.id}`}
-            className="card flex flex-wrap items-center justify-between gap-4 p-5 hover:border-[var(--color-primary)]"
-          >
+      <h2 className="text-2xl font-bold">{t('title')}</h2>
+      <AccountList
+        query={returns}
+        columns={columns}
+        caption={t('title')}
+        page={params.page}
+        pageSize={RETURNS_PAGE_SIZE}
+        onPageChange={(page) => setParams({ page })}
+        emptyTitle={t('emptyTitle')}
+        emptyDescription={t('emptyBody')}
+        emptyAction={<Button asChild variant="secondary"><Link href={`/${locale}/account/orders`}>{t('viewOrders')}</Link></Button>}
+        renderCard={(item) => (
+          <Link href={href(item)} className="card flex items-center justify-between gap-4 p-4 hover:border-[var(--color-primary)]">
             <div className="grid gap-1">
-              <p className="text-sm text-[var(--color-muted)]">{item.reference} · Order {item.order.reference}</p>
-              <h3 className="font-bold capitalize">{item.type} — {item.status.replaceAll('_', ' ')}</h3>
+              <p className="text-sm text-[var(--color-muted)]">{item.reference} · {t('orderRef', { reference: item.order.reference })}</p>
+              <h3 className="flex flex-wrap items-center gap-2 font-bold">{t(`types.${item.type}`)} <StatusBadge status={item.status} locale={locale} /></h3>
             </div>
-            <span className="font-semibold text-[var(--color-primary)]">View →</span>
+            <span className="shrink-0 font-semibold text-[var(--color-primary)]">{t('view')} →</span>
           </Link>
-        ))
-      ) : (
-        <EmptyState title="No return requests" description="You haven't opened any return or exchange requests yet." />
-      )}
+        )}
+      />
     </div>
   );
 }
 
 export function NewReturn({ locale }) {
+  const t = useTranslations('Account.returns');
+  const schema = useMemo(() => returnSchema(t), [t]);
   const search = useSearchParams();
   const router = useRouter();
   const orderId = search.get('orderId') || '';
   const [quantities, setQuantities] = useState({});
+  const [replacements, setReplacements] = useState({});
+  // One key per intended submission: reused when a retry may duplicate a request that reached the server.
+  const idempotencyKey = useRef(null);
   const eligibility = useQuery({
     queryKey: ['return-eligibility', orderId],
     queryFn: () => accountApi.returnEligibility(orderId),
     enabled: Boolean(orderId)
   });
   const form = useForm({
-    resolver: zodResolver(returnSchema),
-    defaultValues: { type: 'return', reason: '', customerNote: '' },
+    resolver: zodResolver(schema),
+    defaultValues: { type: 'return', reason: 'size_too_small', customerNote: '' },
   });
 
+  const [type, reason] = useWatch({ control: form.control, name: ['type', 'reason'] });
   const create = useMutation({
     mutationFn: (values) => {
       const items = Object.entries(quantities)
         .filter(([, qty]) => Number(qty) > 0)
-        .map(([orderItemId, qty]) => ({ orderItemId, quantity: Number(qty) }));
-      if (!items.length) throw new Error('Select at least one item quantity.');
+        .map(([orderItemId, qty]) => ({ orderItemId, quantity: Number(qty), ...(values.type === 'exchange' && replacements[orderItemId] ? { requestedVariantId: replacements[orderItemId] } : {}) }));
+      if (!items.length) throw new Error(t('errors.noItems'));
+      idempotencyKey.current ||= crypto.randomUUID();
       return accountApi.createReturn(
         {
           orderId,
@@ -85,17 +105,21 @@ export function NewReturn({ locale }) {
           items,
           mediaIds: []
         },
-        crypto.randomUUID()
+        idempotencyKey.current
       );
     },
     onSuccess: (data) => {
-      successToast('Return request created', 'Your request has been submitted');
+      idempotencyKey.current = null;
+      successToast(t('created'));
       router.replace(`/${locale}/account/returns/${data.id}`);
     },
-    onError: (error) => errorToast('Failed to create return request', apiMessage(error, 'Could not create return request')),
+    onError: (error) => {
+      if (error?.response && !isRetryableFailure(error)) idempotencyKey.current = null;
+      errorToast(t('createFailed'), apiMessage(error, error.message));
+    },
   });
 
-  if (!orderId) return <Alert tone="error">Choose an order before requesting a return.</Alert>;
+  if (!orderId) return <Alert tone="error">{t('chooseOrder')}</Alert>;
   if (eligibility.isLoading) {
     return (
       <Card>
@@ -107,10 +131,10 @@ export function NewReturn({ locale }) {
   if (!eligibility.data.eligible) {
     return (
       <Card>
-        <CardHeader title="This order is not eligible" />
+        <CardHeader title={t('notEligible')} />
         <CardBody>
           <p className="text-[var(--color-muted)]">
-            {eligibility.data.ineligibleReason?.replaceAll('_', ' ') || 'No items can be returned.'}
+            {t('notEligibleBody')}
           </p>
         </CardBody>
       </Card>
@@ -120,18 +144,18 @@ export function NewReturn({ locale }) {
   return (
     <form className="card grid gap-5 p-6" onSubmit={form.handleSubmit((values) => create.mutate(values))}>
       <div>
-        <h2 className="text-2xl font-bold">Return or exchange</h2>
+        <h2 className="text-2xl font-bold">{t('newTitle')}</h2>
         <p className="mt-1 text-[var(--color-muted)]">
-          Order {eligibility.data.order.reference} · Request by{' '}
+          {t('orderRef', { reference: eligibility.data.order.reference })} · {t('requestBy')}{' '}
           <FormattedDate value={eligibility.data.policy.deadline} locale={locale} />
         </p>
       </div>
 
       <fieldset>
-        <legend className="font-bold">Items</legend>
+        <legend className="font-bold">{t('items')}</legend>
         <div className="mt-3 grid gap-3">
           {eligibility.data.items.map((item) => (
-            <label
+            <div
               key={item.orderItemId}
               className={`grid grid-cols-[1fr_120px] items-center gap-4 rounded-[var(--radius-sm)] border border-[var(--color-border)] p-4 ${!item.eligible ? 'opacity-60' : ''}`}
             >
@@ -139,12 +163,12 @@ export function NewReturn({ locale }) {
                 <strong>{item.productName}</strong>
                 <br />
                 <span className="text-sm text-[var(--color-muted)]">
-                  {item.variantTitle} · {item.sku} · Up to {item.eligibleQuantity} ·{' '}
+                  {item.variantTitle} · {item.sku} · {t('upTo', { count: item.eligibleQuantity })} ·{' '}
                   <FormattedMoney value={item.refundableAmount} locale={locale} />
                 </span>
               </span>
               <Input
-                aria-label={`Quantity for ${item.productName}`}
+                aria-label={t('quantityFor', { name: item.productName })}
                 type="number"
                 min={0}
                 max={item.eligibleQuantity}
@@ -152,39 +176,50 @@ export function NewReturn({ locale }) {
                 value={quantities[item.orderItemId] || 0}
                 onChange={(event) => setQuantities((current) => ({ ...current, [item.orderItemId]: event.target.value }))}
               />
-            </label>
+              {type === 'exchange' && item.eligible && Number(quantities[item.orderItemId] || 0) > 0 && item.exchangeOptions?.length ? (
+                <Field label={t('replacement')} hint={t('replacementHint')} className="col-span-2">
+                  <NativeSelect
+                    value={replacements[item.orderItemId] || ''}
+                    onChange={(event) => setReplacements((current) => ({ ...current, [item.orderItemId]: event.target.value }))}
+                    options={[{ value: '', label: t('replacementNone') }, ...item.exchangeOptions.map((option) => ({ value: option.variantId, label: option.available ? option.title : `${option.title} — ${t('soldOut')}`, disabled: !option.available }))]}
+                  />
+                </Field>
+              ) : null}
+            </div>
           ))}
         </div>
       </fieldset>
 
-      <Field label="Request type" error={form.formState.errors.type?.message}>
+      <Field label={t('type')} error={form.formState.errors.type?.message}>
         <NativeSelect
-          {...form.register('type')}
+          value={type}
+          onChange={(event) => form.setValue('type', event.target.value)}
           options={[
-            { value: 'return', label: 'Return for refund' },
-            { value: 'exchange', label: 'Exchange' }
+            { value: 'return', label: t('types.return') },
+            { value: 'exchange', label: t('types.exchange') }
           ]}
         />
       </Field>
 
-      <Field label="Reason" required error={form.formState.errors.reason?.message}>
-        <Input required minLength={3} {...form.register('reason')} />
+      <Field label={t('reason')} required error={form.formState.errors.reason?.message}>
+        <NativeSelect value={reason} onChange={(event) => form.setValue('reason', event.target.value, { shouldValidate: true })} options={RETURN_REASONS.map((value) => ({ value, label: t(`reasons.${value}`) }))} />
       </Field>
 
-      <Field label="Additional details (optional)" error={form.formState.errors.customerNote?.message}>
+      <Field label={t('details')} error={form.formState.errors.customerNote?.message}>
         <Textarea rows={4} {...form.register('customerNote')} />
       </Field>
 
       {create.error ? <Alert tone="error">{apiMessage(create.error, create.error.message)}</Alert> : null}
 
       <div>
-        <Button loading={create.isPending} type="submit">Submit request</Button>
+        <Button loading={create.isPending} type="submit">{t('submit')}</Button>
       </div>
     </form>
   );
 }
 
 export function ReturnDetail({ id, locale }) {
+  const t = useTranslations('Account.returns');
   const client = useQueryClient();
   const detail = useQuery({ queryKey: ['account', 'return', id], queryFn: () => accountApi.returnDetail(id) });
   const cancel = useMutation({
@@ -192,9 +227,9 @@ export function ReturnDetail({ id, locale }) {
     onSuccess: (data) => {
       client.setQueryData(['account', 'return', id], data);
       client.invalidateQueries({ queryKey: ['account', 'returns'] });
-      pushToast({ tone: 'success', title: 'Return request cancelled', description: 'The request has been cancelled.' });
+      pushToast({ tone: 'success', title: t('cancelled') });
     },
-    onError: (error) => pushToast({ tone: 'error', title: 'Could not cancel return', description: apiMessage(error, 'Return could not be cancelled.') })
+    onError: (error) => pushToast({ tone: 'error', title: t('cancelFailed'), description: apiMessage(error) })
   });
 
   if (detail.isLoading) {
@@ -212,32 +247,33 @@ export function ReturnDetail({ id, locale }) {
       <Card>
         <CardBody className="grid gap-2">
           <p className="text-sm uppercase tracking-widest text-[var(--color-muted)]">{data.reference}</p>
-          <h2 className="text-2xl font-bold capitalize">{data.type} — {data.status.replaceAll('_', ' ')}</h2>
-          <p className="text-[var(--color-muted)]">Order {data.order.reference}</p>
+          <h2 className="flex flex-wrap items-center gap-2 text-2xl font-bold">{t(`types.${data.type}`)} <StatusBadge status={data.status} locale={locale} /></h2>
+          <p className="text-[var(--color-muted)]">{t('orderRef', { reference: data.order.reference })} · {reasonLabel(t, data.reason)}</p>
           {data.refundAmount ? (
             <p className="font-bold">
-              Refund: <FormattedMoney value={data.refundAmount} locale={locale} />
+              {t('refund')}: <FormattedMoney value={data.refundAmount} locale={locale} />
             </p>
           ) : null}
         </CardBody>
       </Card>
 
       <Card>
-        <CardHeader title="Items" />
+        <CardHeader title={t('items')} />
         <CardBody className="grid gap-3">
           {data.items.map((item) => (
             <div key={item.id} className="border-t border-[var(--color-border)] pt-3 first:border-0 first:pt-0">
               <strong>{item.orderItem.productName}</strong>
               <p className="text-sm text-[var(--color-muted)]">
-                {item.orderItem.variantTitle} · {item.orderItem.sku} · Qty {item.quantity}
+                {item.orderItem.variantTitle} · {item.orderItem.sku} · {t('qty', { count: item.quantity })}
               </p>
+              {item.requestedVariant ? <p className="text-sm">{t('replacementChosen', { size: item.requestedVariant.title })}</p> : null}
             </div>
           ))}
         </CardBody>
       </Card>
 
       <Card>
-        <CardHeader title="Timeline" />
+        <CardHeader title={t('timeline')} />
         <CardBody>
           <ol className="border-l-2 border-[var(--color-border)] pl-5">
             {data.events.map((event) => (
@@ -251,7 +287,7 @@ export function ReturnDetail({ id, locale }) {
       </Card>
 
       {data.status === 'requested' ? (
-        <Button variant="danger" loading={cancel.isPending} onClick={() => cancel.mutate()}>Cancel request</Button>
+        <Button variant="danger" loading={cancel.isPending} onClick={() => cancel.mutate()}>{t('cancel')}</Button>
       ) : null}
       {cancel.error ? <Alert tone="error">{apiMessage(cancel.error)}</Alert> : null}
     </div>

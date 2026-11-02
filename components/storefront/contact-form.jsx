@@ -5,13 +5,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, Button, Card, CardBody, Field, FieldGroup, Input, Textarea } from '@/components/ui';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
+import { isBangladeshiPhone } from '@/lib/utils';
 import { pushToast, successToast, errorToast } from '@/components/ui/toast';
 
 const contactSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters'),
-  phone: z.string().trim().regex(/^\+?8801[0-9]{9}$/, 'Enter a valid Bangladeshi phone number').or(z.literal('')),
+  phone: z.string().trim().refine((value) => !value || isBangladeshiPhone(value), 'Enter a valid Bangladeshi phone number'),
   email: z.string().trim().email('Enter a valid email address').or(z.literal('')),
-  subject: z.string().trim().min(2, 'Subject must be at least 2 characters').max(200, 'Subject must be 200 characters or fewer'),
+  subject: z.string().trim().min(2, 'Subject must be at least 2 characters').max(180, 'Subject must be 180 characters or fewer'),
   message: z.string().trim().min(10, 'Message must be at least 10 characters').max(5000, 'Message must be 5000 characters or fewer'),
 });
 

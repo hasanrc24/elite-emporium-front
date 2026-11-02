@@ -4,7 +4,7 @@ import { Children, cloneElement, forwardRef, isValidElement, useId } from 'react
 import { cn } from '@/lib/utils';
 
 const baseInput =
-  'flex w-full min-h-11 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3.5 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-muted)] transition duration-200 ease-out hover:border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:shadow-[var(--shadow-focus)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60';
+  'flex w-full min-h-11 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3.5 py-2.5 text-base text-[var(--color-text)] md:text-sm placeholder:text-[var(--color-muted)] transition duration-200 ease-out hover:border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:shadow-[var(--shadow-focus)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60';
 
 export const Input = forwardRef(function Input({ className, invalid = false, inputMode, type = 'text', ...rest }, ref) {
   return (

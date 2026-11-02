@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { Alert, Button, Card, CardBody, CardHeader, DatePicker, Field, FieldGroup, Input, NativeSelect, Skeleton, TabsContent, TabsList, TabsRoot, Textarea } from '@/components/ui';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ActionMenu, Alert, Button, Card, CardBody, CardHeader, ConfirmAction, DatePicker, Field, FieldGroup, FormattedDate, Input, NativeSelect, Skeleton, TabsContent, TabsList, TabsRoot, Textarea } from '@/components/ui';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
 import { AdminPageHeader } from './admin-page-header';
 
@@ -21,6 +21,16 @@ const blank = (kind) => ({
   changeSummary: '',
   version: 1
 });
+// The API sends ISO-8601 UTC; the picker works in local `YYYY-MM-DDTHH:mm`. Slicing the ISO string would
+// display UTC digits as local time and shift the schedule by the timezone offset on every save.
+function toLocalInput(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 const blockTypes = ['rich_text', 'image', 'hero', 'banner', 'product_carousel', 'category_grid', 'collection_grid', 'countdown', 'testimonials', 'faq', 'newsletter', 'blog_feed'];
 const statusOptions = [
   { value: 'draft', label: 'Draft' },
@@ -57,13 +67,16 @@ export function ContentEditor({ kind, id }) {
 
 function ContentEditorForm({ kind, id, initialContent }) {
   const router = useRouter();
+  const client = useQueryClient();
   const isNew = id === 'new';
   const [form, setForm] = useState(() => ({ ...blank(kind), ...initialContent, changeSummary: '' }));
   const save = useMutation({
     mutationFn: () => (isNew ? browserApi.post(`/admin/${kind}`, form) : browserApi.patch(`/admin/${kind}/${id}`, form)).then((response) => response.data.data),
     onSuccess: (saved) => {
       setForm({ ...saved, changeSummary: '' });
+      client.invalidateQueries({ queryKey: ['admin-resource', kind] });
       if (isNew) router.replace(`/admin/content/${kind}/${saved.id}`);
+      else client.invalidateQueries({ queryKey: ['admin-content-revisions', kind, id] });
     }
   });
   const revisions = useQuery({
@@ -74,7 +87,11 @@ function ContentEditorForm({ kind, id, initialContent }) {
   const rollback = useMutation({
     mutationFn: (revisionId) =>
       browserApi.post(`/admin/${kind}/${id}/rollback`, { revisionId, version: Number(form.version) }).then((response) => response.data.data),
-    onSuccess: setForm
+    onSuccess: (saved) => {
+      setForm({ ...saved, changeSummary: '' });
+      client.invalidateQueries({ queryKey: ['admin-content-revisions', kind, id] });
+      client.invalidateQueries({ queryKey: ['admin-resource', kind] });
+    }
   });
   const updateTranslation = (locale, key, value) =>
     setForm({ ...form, translations: { ...form.translations, [locale]: { ...form.translations[locale], [key]: value } } });
@@ -104,7 +121,7 @@ function ContentEditorForm({ kind, id, initialContent }) {
             <Field label="Publish at">
               <DatePicker
                 withTime
-                value={form.publishAt ? String(form.publishAt).slice(0, 16) : ''}
+                value={toLocalInput(form.publishAt)}
                 onChange={(value) => setForm({ ...form, publishAt: value ? new Date(value).toISOString() : null })}
               />
             </Field>
@@ -179,7 +196,7 @@ function ContentEditorForm({ kind, id, initialContent }) {
           </Field>
           <div className="flex flex-wrap gap-3">
             <Button loading={save.isPending} onClick={() => save.mutate()}>{isNew ? 'Create' : 'Save changes'}</Button>
-            {save.error ? <Alert tone="error">{apiMessage(save.error)}</Alert> : null}
+            {save.error || rollback.error ? <Alert tone="error">{apiMessage(save.error || rollback.error)}</Alert> : null}
             {save.isSuccess ? <Alert tone="success">Saved.</Alert> : null}
           </div>
         </CardBody>
@@ -193,11 +210,16 @@ function ContentEditorForm({ kind, id, initialContent }) {
               <div key={revision.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] p-3">
                 <div>
                   <p className="text-sm font-semibold">{revision.changeSummary || 'No summary'}</p>
-                  <p className="text-xs text-[var(--color-muted)]">v{revision.version} · {revision.editorName}</p>
+                  <p className="text-xs text-[var(--color-muted)]">v{revision.version} · <FormattedDate value={revision.createdAt} withTime /></p>
                 </div>
-                <Button variant="secondary" loading={rollback.isPending} onClick={() => rollback.mutate(revision.id)}>
-                  Restore this revision
-                </Button>
+                <ConfirmAction
+                  title={`Restore revision v${revision.version}?`}
+                  description="The current content, including unsaved edits, will be replaced by this revision."
+                  confirmLabel="Restore revision"
+                  tone="primary"
+                  onConfirm={() => rollback.mutate(revision.id)}
+                  trigger={<Button variant="secondary" loading={rollback.isPending}>Restore this revision</Button>}
+                />
               </div>
             ))}
           </CardBody>
@@ -268,10 +290,16 @@ function BlockEditor({ blocks, onChange }) {
                 />
               </Field>
             </FieldGroup>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="outline" disabled={index === 0} onClick={() => move(index, -1)}>Move up</Button>
-              <Button variant="outline" disabled={index === blocks.length - 1} onClick={() => move(index, 1)}>Move down</Button>
-              <Button variant="outline" onClick={() => onChange(blocks.filter((_, position) => position !== index))}>Remove</Button>
+            <div className="mt-3 flex justify-end">
+              <ActionMenu
+                label={`Actions for block ${index + 1}`}
+                actions={[
+                  { label: 'Move up', disabled: index === 0, onSelect: () => move(index, -1) },
+                  { label: 'Move down', disabled: index === blocks.length - 1, onSelect: () => move(index, 1) },
+                  { separator: true },
+                  { label: 'Remove', destructive: true, onSelect: () => onChange(blocks.filter((_, position) => position !== index)) }
+                ]}
+              />
             </div>
           </fieldset>
         ))}

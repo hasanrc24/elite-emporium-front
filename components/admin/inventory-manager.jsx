@@ -1,21 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { Suspense, useCallback, useMemo, useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
-  ArrowLeftRight, AlertTriangle, Boxes, Package, PackageSearch, Search, RefreshCw,
+  ArrowLeftRight, AlertTriangle, Boxes, Eye, Package, PackageSearch, Search, RefreshCw,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { browserApi, apiMessage } from '@/lib/api/browser-api';
-import { pushToast } from '@/components/ui';
+import { useAuthStore } from '@/lib/auth/auth-store';
+import { useSearchInput, useTableParams } from '@/lib/hooks/use-table-params';
 import {
-  Alert, Button, Card, CardBody, DataTable, Field, FieldGroup, FormattedDate,
-  Input, NativeSelect, Pagination, Skeleton, StatusBadge, TabsContent, TabsList, TabsRoot, Textarea,
+  actionsColumn, Alert, Badge, Button, Card, CardBody, DataTable, Field, FieldGroup, FormattedDate,
+  Input, NativeSelect, pushToast, TableFooter, TabsContent, TabsList, TabsRoot, Textarea,
 } from '@/components/ui';
 import { DialogContent, DialogRoot } from '@/components/ui/overlay';
 import { AdminPageHeader } from './admin-page-header';
 import { cn } from '@/lib/utils';
 
-const PAGE_SIZE = 25;
+const DEFAULTS = { tab: 'levels', page: 1, pageSize: 25, search: '', locationId: '', lowStock: '', reason: '' };
 
 const ADJUSTMENT_REASONS = [
   { value: 'purchase_receipt', label: 'Purchase Receipt' },
@@ -28,63 +30,73 @@ const ADJUSTMENT_REASONS = [
   { value: 'other', label: 'Other' },
 ];
 
+const num = 'tabular-nums';
+
 export function InventoryManager() {
+  // useTableParams reads the URL, which needs a Suspense boundary during prerender.
+  return <Suspense><InventoryPage /></Suspense>;
+}
+
+function InventoryPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('levels');
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [lowStockOnly, setLowStockOnly] = useState(false);
-  const [locationId, setLocationId] = useState('');
+  const router = useRouter();
+  const canAdjust = useAuthStore((state) => Boolean(state.user?.permissions?.includes('inventory.adjust')));
+  const [params, setParams] = useTableParams(DEFAULTS);
+  const activeTab = ['levels', 'low-stock', 'movements'].includes(params.tab) ? params.tab : 'levels';
   const [adjustmentOpen, setAdjustmentOpen] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [conflictData, setConflictData] = useState(null);
   const [adjustForm, setAdjustForm] = useState({
-    variantId: '', locationId: '', mode: 'increase', quantity: '', reason: '', note: '', version: '', idempotencyKey: '',
+    variantId: '', locationId: '', mode: 'increase', quantity: '', reason: '', note: '', version: '',
   });
   const [adjustErrors, setAdjustErrors] = useState({});
 
-  const [timeoutId, setTimeoutId] = useState(null);
-  const debouncedSearch = useMemo(() => (value) => {
-    if (timeoutId) clearTimeout(timeoutId);
-    const id = setTimeout(() => setSearch(value), 300);
-    setTimeoutId(id);
-  }, [timeoutId]);
-
-  const handleSearchChange = (value) => {
-    debouncedSearch(value);
-    setPage(1);
-  };
+  // The input stays responsive while the URL (and so the query) follows after a pause.
+  const commitSearch = useCallback((value) => setParams({ search: value }), [setParams]);
+  const [searchInput, setSearchInput] = useSearchInput(params.search, commitSearch);
 
   const levelsParams = useMemo(() => {
-    const params = { page, pageSize: PAGE_SIZE };
-    if (search.trim()) params.search = search.trim();
-    if (lowStockOnly) params.lowStock = 'true';
-    if (locationId) params.locationId = locationId;
-    return params;
-  }, [page, search, lowStockOnly, locationId]);
+    const p = { page: params.page, pageSize: params.pageSize };
+    if (params.search) p.search = params.search;
+    if (params.lowStock === 'true') p.lowStock = 'true';
+    if (params.locationId) p.locationId = params.locationId;
+    return p;
+  }, [params.page, params.pageSize, params.search, params.lowStock, params.locationId]);
 
+  const lowStockParams = useMemo(() => {
+    const { lowStock: _ignored, ...rest } = levelsParams;
+    return rest;
+  }, [levelsParams]);
+
+  // The ledger endpoint filters by location and reason only (no free-text search).
   const movementsParams = useMemo(() => {
-    const params = { page, pageSize: PAGE_SIZE };
-    if (search.trim()) params.search = search.trim();
-    if (locationId) params.locationId = locationId;
-    return params;
-  }, [page, search, locationId]);
+    const p = { page: params.page, pageSize: params.pageSize };
+    if (params.locationId) p.locationId = params.locationId;
+    if (params.reason) p.reason = params.reason;
+    return p;
+  }, [params.page, params.pageSize, params.locationId, params.reason]);
 
   const levelsQuery = useQuery({
     queryKey: ['admin-inventory-levels', levelsParams],
     queryFn: () => browserApi.get('/admin/inventory/levels', { params: levelsParams }).then((r) => r.data),
+    enabled: activeTab === 'levels',
+    placeholderData: keepPreviousData,
     staleTime: 30000,
   });
 
   const lowStockQuery = useQuery({
-    queryKey: ['admin-inventory-low-stock', levelsParams],
-    queryFn: () => browserApi.get('/admin/inventory/low-stock', { params: levelsParams }).then((r) => r.data),
+    queryKey: ['admin-inventory-low-stock', lowStockParams],
+    queryFn: () => browserApi.get('/admin/inventory/low-stock', { params: lowStockParams }).then((r) => r.data),
+    enabled: activeTab === 'low-stock',
+    placeholderData: keepPreviousData,
     staleTime: 30000,
   });
 
   const movementsQuery = useQuery({
     queryKey: ['admin-inventory-movements', movementsParams],
     queryFn: () => browserApi.get('/admin/inventory/movements', { params: movementsParams }).then((r) => r.data),
+    enabled: activeTab === 'movements',
+    placeholderData: keepPreviousData,
     staleTime: 30000,
   });
 
@@ -94,14 +106,10 @@ export function InventoryManager() {
     staleTime: 60000,
   });
 
-  const rows = activeTab === 'low-stock'
-    ? (Array.isArray(lowStockQuery.data?.data) ? lowStockQuery.data.data : [])
-    : (Array.isArray(levelsQuery.data?.data) ? levelsQuery.data.data : []);
-
-  const totalRecords = activeTab === 'low-stock'
-    ? (lowStockQuery.data?.meta?.total ?? rows.length)
-    : (levelsQuery.data?.meta?.total ?? rows.length);
-  const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+  const rows = useMemo(() => {
+    const source = activeTab === 'low-stock' ? lowStockQuery.data?.data : levelsQuery.data?.data;
+    return Array.isArray(source) ? source : [];
+  }, [activeTab, lowStockQuery.data, levelsQuery.data]);
 
   const kpis = useMemo(() => {
     const data = rows;
@@ -113,17 +121,17 @@ export function InventoryManager() {
   }, [rows]);
 
   const adjustmentMutation = useMutation({
-    mutationFn: async (payload) => {
+    mutationFn: async ({ payload, idempotencyKey }) => {
       const response = await browserApi.post(
         '/admin/inventory/adjustments',
         payload,
-        { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+        { headers: { 'Idempotency-Key': idempotencyKey } },
       );
       return response.data;
     },
     onSuccess: () => {
       setAdjustmentOpen(false);
-      setAdjustForm({ variantId: '', locationId: '', mode: 'increase', quantity: '', reason: '', note: '', version: '', idempotencyKey: '' });
+      setAdjustForm({ variantId: '', locationId: '', mode: 'increase', quantity: '', reason: '', note: '', version: '' });
       setAdjustErrors({});
       queryClient.invalidateQueries({ queryKey: ['admin-inventory-levels'] });
       queryClient.invalidateQueries({ queryKey: ['admin-inventory-low-stock'] });
@@ -131,11 +139,23 @@ export function InventoryManager() {
       queryClient.invalidateQueries({ queryKey: ['admin-inventory-locations'] });
       pushToast({ tone: 'success', title: 'Adjustment recorded successfully.' });
     },
-    onError: (error) => {
+    onError: async (error, { payload }) => {
       const code = error?.response?.data?.error?.code;
       if (code === 'VERSION_CONFLICT') {
-        setConflictData(error?.response?.data?.data);
+        // The error envelope carries no record; reload the levels and show the latest balance for review.
+        setConflictData(null);
         setConflictOpen(true);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['admin-inventory-levels'] }),
+          queryClient.invalidateQueries({ queryKey: ['admin-inventory-low-stock'] }),
+          queryClient.invalidateQueries({ queryKey: ['admin-inventory-movements'] }),
+        ]);
+        const latest = [
+          ...queryClient.getQueriesData({ queryKey: ['admin-inventory-levels'] }),
+          ...queryClient.getQueriesData({ queryKey: ['admin-inventory-low-stock'] }),
+        ].flatMap(([, data]) => (Array.isArray(data?.data) ? data.data : []))
+          .find((row) => row.variantId === payload.variantId && row.location?.id === payload.locationId);
+        setConflictData(latest || null);
       } else {
         pushToast({ tone: 'error', title: apiMessage(error, 'Failed to record adjustment.') });
       }
@@ -148,77 +168,238 @@ export function InventoryManager() {
     if (!adjustForm.locationId) errors.locationId = 'Location is required.';
     if (!adjustForm.reason) errors.reason = 'Reason is required.';
     if (!adjustForm.version) errors.version = 'Current version is required.';
-    if (!adjustForm.idempotencyKey) errors.idempotencyKey = 'Idempotency key is required.';
-    if (adjustForm.mode !== 'counted' && !adjustForm.quantity) errors.quantity = 'Quantity is required.';
+    if (adjustForm.quantity === '') errors.quantity = 'Quantity is required.';
+    else if (!/^\d+$/.test(String(adjustForm.quantity).trim())) errors.quantity = 'Enter a whole number of zero or more.';
     if (Object.keys(errors).length > 0) { setAdjustErrors(errors); return; }
 
     const payload = {
       variantId: adjustForm.variantId,
       locationId: adjustForm.locationId,
       reason: adjustForm.reason,
-      note: adjustForm.note || null,
       version: Number(adjustForm.version),
     };
+    if (adjustForm.note.trim()) payload.note = adjustForm.note.trim();
     if (adjustForm.mode === 'counted') {
       payload.countedQuantity = Number(adjustForm.quantity);
     } else {
       payload.delta = adjustForm.mode === 'increase' ? Number(adjustForm.quantity) : -Number(adjustForm.quantity);
     }
 
-    adjustmentMutation.mutate(payload);
+    if (adjustmentMutation.isPending) return;
+    // One key per submit attempt; client-side auth retries reuse the same request config and key.
+    adjustmentMutation.mutate({ payload, idempotencyKey: crypto.randomUUID() });
   };
+
+  const openAdjust = (level) => {
+    setAdjustForm({ variantId: level.variantId || '', locationId: level.location?.id || '', mode: 'increase', quantity: '', reason: '', note: '', version: String(level.version || 1) });
+    setAdjustErrors({});
+    setAdjustmentOpen(true);
+  };
+
+  const hasFilters = Boolean(params.search || params.locationId || params.reason || (activeTab === 'levels' && params.lowStock === 'true'));
+  const clearFilters = () => { setSearchInput(''); setParams({ search: '', locationId: '', lowStock: '', reason: '' }); };
+  const clearAction = hasFilters ? <Button size="sm" variant="secondary" onClick={clearFilters}>Clear filters</Button> : null;
+  const locationOptions = [
+    { value: '', label: 'All locations' },
+    ...(locationsQuery.data || []).map((loc) => ({ value: loc.id, label: `${loc.code} — ${loc.name}` })),
+  ];
+  const refetchActive = () => (activeTab === 'low-stock' ? lowStockQuery : activeTab === 'movements' ? movementsQuery : levelsQuery).refetch();
+
+  const levelActions = (level) => [
+    { label: 'Adjust stock', icon: ArrowLeftRight, onSelect: () => openAdjust(level), hidden: !canAdjust },
+    { label: 'View product', icon: Eye, href: `/admin/products/${level.product?.id}`, hidden: !level.product?.id },
+  ];
+  const levelRowProps = {
+    rowKey: (row) => row.id,
+    minWidth: 980,
+    onRowClick: (row) => { if (row.product?.id) router.push(`/admin/products/${row.product.id}`); },
+    rowLabel: (row) => `Open product ${row.product?.name || row.sku || ''}`,
+  };
+  const skuColumn = {
+    header: 'SKU / Product',
+    id: 'product',
+    cell: ({ row }) => (
+      <div className="min-w-[200px]">
+        <p className="font-semibold text-[var(--color-text)]">{row.original.sku || '—'}</p>
+        <p className="max-w-64 truncate text-xs text-[var(--color-muted)]" title={row.original.product?.name || row.original.variantTitle || ''}>{row.original.product?.name || row.original.variantTitle || ''}</p>
+        {row.original.variantTitle ? <p className="max-w-64 truncate text-xs text-[var(--color-muted)]" title={row.original.variantTitle}>Variant: {row.original.variantTitle}</p> : null}
+      </div>
+    ),
+  };
+
+  const levelsColumns = [
+    skuColumn,
+    {
+      header: 'Location',
+      id: 'location',
+      cell: ({ row }) => (
+        row.original.location ? <span className="grid min-w-32 max-w-48 text-sm"><span className="truncate font-medium" title={row.original.location.name}>{row.original.location.name}</span><span className="truncate text-xs text-[var(--color-muted)]">{row.original.location.code}</span></span> : '—'
+      ),
+    },
+    { header: 'On Hand', id: 'onHand', meta: { align: 'right' }, cell: ({ row }) => <span className={cn('font-semibold', num)}>{Number(row.original.onHand).toLocaleString()}</span> },
+    { header: 'Reserved', id: 'reserved', meta: { align: 'right' }, cell: ({ row }) => <span className={cn('text-[var(--color-muted)]', num)}>{Number(row.original.reserved).toLocaleString()}</span> },
+    {
+      header: 'Available',
+      id: 'available',
+      meta: { align: 'right' },
+      cell: ({ row }) => {
+        const avail = Number(row.original.available);
+        return <span className={cn(num, avail <= 0 && 'text-[var(--color-danger)] font-semibold')}>{avail.toLocaleString()}</span>;
+      },
+    },
+    { header: 'Low Threshold', id: 'lowStockThreshold', meta: { align: 'right' }, cell: ({ row }) => <span className={num}>{Number(row.original.lowStockThreshold).toLocaleString()}</span> },
+    {
+      header: 'Status',
+      id: 'status',
+      cell: ({ row }) => {
+        const avail = Number(row.original.available);
+        if (avail <= 0) return <Badge tone="danger">Out of stock</Badge>;
+        if (row.original.lowStock) return <Badge tone="warning">Low stock</Badge>;
+        return <Badge tone="success">In stock</Badge>;
+      },
+    },
+    { header: 'Updated', id: 'updatedAt', cell: ({ row }) => <span className="whitespace-nowrap text-[var(--color-muted)]"><FormattedDate value={row.original.updatedAt} withTime /></span> },
+    actionsColumn(levelActions, { label: (row) => `Actions for ${row.sku || 'stock level'}` }),
+  ];
+
+  const lowStockColumns = [
+    skuColumn,
+    {
+      header: 'Location',
+      id: 'location',
+      cell: ({ row }) => row.original.location ? <span className="grid min-w-32 max-w-48 text-sm"><span className="truncate font-medium" title={row.original.location.name}>{row.original.location.name}</span><span className="truncate text-xs text-[var(--color-muted)]">{row.original.location.code}</span></span> : '—',
+    },
+    { header: 'On Hand', id: 'onHand', meta: { align: 'right' }, cell: ({ row }) => <span className={cn('font-semibold text-[var(--color-danger)]', num)}>{Number(row.original.onHand).toLocaleString()}</span> },
+    { header: 'Reserved', id: 'reserved', meta: { align: 'right' }, cell: ({ row }) => <span className={num}>{Number(row.original.reserved).toLocaleString()}</span> },
+    { header: 'Available', id: 'available', meta: { align: 'right' }, cell: ({ row }) => <span className={cn('text-[var(--color-danger)] font-semibold', num)}>{Number(row.original.available).toLocaleString()}</span> },
+    { header: 'Low Threshold', id: 'lowStockThreshold', meta: { align: 'right' }, cell: ({ row }) => <span className={num}>{Number(row.original.lowStockThreshold).toLocaleString()}</span> },
+    { header: 'Status', id: 'status', cell: () => <Badge tone="warning">Low stock</Badge> },
+    { header: 'Updated', id: 'updatedAt', cell: ({ row }) => <span className="whitespace-nowrap text-[var(--color-muted)]"><FormattedDate value={row.original.updatedAt} withTime /></span> },
+    actionsColumn(levelActions, { label: (row) => `Actions for ${row.sku || 'stock level'}` }),
+  ];
+
+  const movementColumns = [
+    {
+      header: 'Variant',
+      id: 'variant',
+      cell: ({ row }) => (
+        <div>
+          <p className="font-semibold text-[var(--color-text)]">{row.original.variant?.sku || '—'}</p>
+          <p className="max-w-56 truncate text-xs text-[var(--color-muted)]" title={row.original.variant?.title || ''}>{row.original.variant?.title || ''}</p>
+        </div>
+      ),
+    },
+    { header: 'Location', id: 'location', cell: ({ row }) => <span className="text-sm">{row.original.location ? row.original.location.code : '—'}</span> },
+    {
+      header: 'Qty Δ',
+      id: 'quantityDelta',
+      meta: { align: 'right' },
+      cell: ({ row }) => {
+        const delta = Number(row.original.quantityDelta);
+        return (
+          <span className={cn('font-semibold', num, delta >= 0 && 'text-[var(--color-success)]', delta < 0 && 'text-[var(--color-danger)]')}>
+            {delta >= 0 ? '+' : ''}{delta.toLocaleString()}
+          </span>
+        );
+      },
+    },
+    { header: 'Before', id: 'onHandBefore', meta: { align: 'right' }, cell: ({ row }) => <span className={cn('text-[var(--color-muted)]', num)}>{Number(row.original.onHandBefore).toLocaleString()}</span> },
+    { header: 'After', id: 'onHandAfter', meta: { align: 'right' }, cell: ({ row }) => <span className={cn('font-semibold', num)}>{Number(row.original.onHandAfter).toLocaleString()}</span> },
+    { header: 'Reason', id: 'reason', cell: ({ row }) => <span className="capitalize">{row.original.reason?.replace(/_/g, ' ') || '—'}</span> },
+    { header: 'Actor', id: 'actor', cell: ({ row }) => <span>{row.original.actor?.name || 'System'}</span> },
+    {
+      header: 'Order/Ref',
+      id: 'correlation',
+      cell: ({ row }) => {
+        const text = row.original.orderId ? `Order: ${row.original.orderId}` : row.original.correlationId ? `Ref: ${row.original.correlationId.slice(0, 8)}…` : '—';
+        return <span className="block max-w-40 truncate text-xs text-[var(--color-muted)]" title={row.original.orderId || row.original.correlationId || undefined}>{text}</span>;
+      },
+    },
+    { header: 'Date', id: 'createdAt', cell: ({ row }) => <span className="whitespace-nowrap text-[var(--color-muted)]"><FormattedDate value={row.original.createdAt} withTime /></span> },
+  ];
+
+  const searchField = (placeholder) => (
+    <Field label="Search" className="min-w-56 flex-1 sm:max-w-sm">
+      <Input aria-label="Search" className="!min-h-10 !pl-9" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder={placeholder} />
+      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={15} />
+    </Field>
+  );
+  const locationField = (
+    <Field label="Location" className="min-w-40">
+      <NativeSelect value={params.locationId} onChange={(e) => setParams({ locationId: e.target.value })} options={locationOptions} />
+    </Field>
+  );
+  const refreshButton = <Button size="sm" variant="secondary" onClick={refetchActive}><RefreshCw size={15} />Refresh</Button>;
+  const footer = (query) => (
+    <TableFooter
+      page={params.page}
+      pageSize={params.pageSize}
+      total={query.data?.meta?.total || 0}
+      pageCount={query.data?.meta?.pageCount}
+      onPageChange={(page) => setParams({ page })}
+      onPageSizeChange={(pageSize) => setParams({ pageSize })}
+    />
+  );
+  const tableState = (query, message) => ({
+    loading: query.isLoading,
+    fetching: query.isFetching,
+    error: query.error ? apiMessage(query.error, message) : null,
+    onRetry: query.refetch,
+  });
 
   return (
     <div className="grid gap-5">
       <AdminPageHeader
         title="Inventory"
         description="Monitor stock levels, review movements, and make authorized adjustments."
-        actions={
-          <Button onClick={() => setAdjustmentOpen(true)}>
+        actions={canAdjust ? (
+          <Button onClick={() => { setAdjustErrors({}); setAdjustmentOpen(true); }}>
             <ArrowLeftRight size={17} />
             Adjust Inventory
           </Button>
-        }
+        ) : null}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardBody className="grid gap-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
-              <Package className="h-4 w-4" /> Total SKUs
-            </div>
-            <p className="text-2xl font-black tracking-tight" data-numeric={kpis.totalSku} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="grid gap-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
-              <AlertTriangle className="h-4 w-4" /> Low Stock
-            </div>
-            <p className="text-2xl font-black tracking-tight" data-numeric={kpis.lowStock} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="grid gap-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
-              <PackageSearch className="h-4 w-4" /> Out of Stock
-            </div>
-            <p className="text-2xl font-black tracking-tight" data-numeric={kpis.outOfStock} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="grid gap-1">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
-              <Boxes className="h-4 w-4" /> Units On Hand
-            </div>
-            <p className="text-2xl font-black tracking-tight" data-numeric={kpis.totalOnHand.toLocaleString()} />
-          </CardBody>
-        </Card>
-      </div>
+      {activeTab !== 'movements' ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardBody className="grid gap-1">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                <Package className="h-4 w-4" /> Total SKUs
+              </div>
+              <p className="text-2xl font-black tracking-tight" data-numeric>{kpis.totalSku.toLocaleString()}</p>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody className="grid gap-1">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                <AlertTriangle className="h-4 w-4" /> Low Stock
+              </div>
+              <p className="text-2xl font-black tracking-tight" data-numeric>{kpis.lowStock.toLocaleString()}</p>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody className="grid gap-1">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                <PackageSearch className="h-4 w-4" /> Out of Stock
+              </div>
+              <p className="text-2xl font-black tracking-tight" data-numeric>{kpis.outOfStock.toLocaleString()}</p>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardBody className="grid gap-1">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                <Boxes className="h-4 w-4" /> Units On Hand
+              </div>
+              <p className="text-2xl font-black tracking-tight" data-numeric>{kpis.totalOnHand.toLocaleString()}</p>
+            </CardBody>
+          </Card>
+        </div>
+      ) : null}
 
       <Card>
         <CardBody className="grid gap-4">
-          <TabsRoot value={activeTab} onValueChange={setActiveTab}>
+          <TabsRoot value={activeTab} onValueChange={(tab) => setParams({ tab })}>
             <TabsList items={[
               { value: 'levels', label: 'Levels' },
               { value: 'low-stock', label: 'Low Stock' },
@@ -228,283 +409,76 @@ export function InventoryManager() {
             <TabsContent value="levels">
               <div className="grid gap-3">
                 <div className="flex flex-wrap items-end gap-3">
-                  <Field label="Search" className="min-w-56 flex-1 sm:max-w-sm">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={15} />
-                      <Input className="!min-h-10 !pl-9" value={search} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Search SKU or product…" />
-                    </div>
-                  </Field>
-                  <Field label="Location" className="min-w-40">
-                    <NativeSelect
-                      value={locationId}
-                      onChange={(e) => { setLocationId(e.target.value); setPage(1); }}
-                      options={[
-                        { value: '', label: 'All locations' },
-                        ...(locationsQuery.data || []).map((loc) => ({ value: loc.id, label: `${loc.code} — ${loc.name}` })),
-                      ]}
-                    />
-                  </Field>
+                  {searchField('Search SKU or product…')}
+                  {locationField}
                   <label className="flex items-center gap-2 text-sm font-semibold">
-                    <input type="checkbox" checked={lowStockOnly} onChange={(e) => { setLowStockOnly(e.target.checked); setPage(1); }} className="rounded" />
+                    <input type="checkbox" checked={params.lowStock === 'true'} onChange={(e) => setParams({ lowStock: e.target.checked ? 'true' : '' })} className="rounded" />
                     Low stock only
                   </label>
-                  <Button size="sm" variant="secondary" onClick={() => { levelsQuery.refetch(); movementsQuery.refetch(); }}><RefreshCw size={15} />Refresh</Button>
+                  {hasFilters ? clearAction : null}
+                  {refreshButton}
                 </div>
 
-                {levelsQuery.isLoading ? <Skeleton className="h-48" /> : null}
-                {levelsQuery.error ? <Alert tone="error">{apiMessage(levelsQuery.error, 'Inventory levels could not be loaded.')}</Alert> : null}
-
                 <DataTable
-                  columns={[
-                    {
-                      header: 'SKU / Product',
-                      id: 'product',
-                      cell: ({ row }) => (
-                        <div className="min-w-[200px]">
-                          <p className="font-semibold text-[var(--color-text)]">{row.original.sku || '—'}</p>
-                          <p className="text-xs text-[var(--color-muted)]">{row.original.product?.name || row.original.variantTitle || ''}</p>
-                          {row.original.variantTitle ? <p className="text-xs text-[var(--color-muted)]">Variant: {row.original.variantTitle}</p> : null}
-                        </div>
-                      ),
-                    },
-                    {
-                      header: 'Location',
-                      accessorKey: 'location',
-                      cell: ({ row }) => (
-                        <span className="text-sm">{row.original.location ? `${row.original.location.code} — ${row.original.location.name}` : '—'}</span>
-                      ),
-                    },
-                    {
-                      header: 'On Hand',
-                      accessorKey: 'onHand',
-                      cell: ({ row }) => <span className="font-semibold">{Number(row.original.onHand).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'Reserved',
-                      accessorKey: 'reserved',
-                      cell: ({ row }) => <span className="text-[var(--color-muted)]">{Number(row.original.reserved).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'Available',
-                      accessorKey: 'available',
-                      cell: ({ row }) => {
-                        const avail = Number(row.original.available);
-                        return <span className={cn(avail <= 0 && 'text-[var(--color-danger)] font-semibold')}>{avail.toLocaleString()}</span>;
-                      },
-                    },
-                    {
-                      header: 'Low Threshold',
-                      accessorKey: 'lowStockThreshold',
-                      cell: ({ row }) => <span>{Number(row.original.lowStockThreshold).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'Status',
-                      id: 'status',
-                      cell: ({ row }) => {
-                        const avail = Number(row.original.available);
-                        if (avail <= 0) return <StatusBadge status="inactive">Out of stock</StatusBadge>;
-                        if (row.original.lowStock) return <StatusBadge status="pending">Low stock</StatusBadge>;
-                        return <StatusBadge status="active">In stock</StatusBadge>;
-                      },
-                    },
-                    {
-                      header: 'Updated',
-                      accessorKey: 'updatedAt',
-                      cell: ({ row }) => <FormattedDate value={row.original.updatedAt} withTime />,
-                    },
-                    {
-                      header: 'Actions',
-                      id: 'actions',
-                      cell: ({ row }) => (
-                        <Button size="sm" variant="ghost" onClick={() => {
-                          setAdjustForm({ variantId: row.original.variantId || '', locationId: row.original.location?.id || '', mode: 'increase', quantity: '', reason: '', note: '', version: String(row.original.version || 1), idempotencyKey: crypto.randomUUID() });
-                          setAdjustErrors({});
-                          setAdjustmentOpen(true);
-                        }}>Adjust</Button>
-                      ),
-                    },
-                  ]}
+                  columns={levelsColumns}
                   data={rows}
-                  loading={levelsQuery.isLoading}
-                  emptyTitle="No inventory records found"
-                  emptyDescription="Try changing your search or filters."
-                  rowKey={(row) => row.id}
+                  {...levelRowProps}
+                  {...tableState(levelsQuery, 'Inventory levels could not be loaded.')}
+                  caption="Inventory levels"
+                  emptyTitle={hasFilters ? 'No inventory matches your filters' : 'No inventory records found'}
+                  emptyDescription={hasFilters ? 'Try a different search or clear the filters.' : 'Stock levels appear here once products have inventory.'}
+                  emptyAction={clearAction}
                 />
-
-                {totalPages > 1 ? (
-                  <Pagination page={page} totalPages={totalPages} onChange={setPage} className="justify-end" />
-                ) : null}
+                {footer(levelsQuery)}
               </div>
             </TabsContent>
 
             <TabsContent value="low-stock">
               <div className="grid gap-3">
                 <div className="flex flex-wrap items-end gap-3">
-                  <Field label="Search" className="min-w-56 flex-1 sm:max-w-sm">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={15} />
-                      <Input className="!min-h-10 !pl-9" value={search} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Search SKU or product…" />
-                    </div>
-                  </Field>
-                  <label className="flex items-center gap-2 text-sm font-semibold">
-                    <input type="checkbox" checked defaultChecked className="rounded" />
-                    Showing low stock only
-                  </label>
+                  {searchField('Search SKU or product…')}
+                  {locationField}
+                  {hasFilters ? clearAction : null}
+                  {refreshButton}
                 </div>
 
-                {lowStockQuery.isLoading ? <Skeleton className="h-48" /> : null}
-                {lowStockQuery.error ? <Alert tone="error">{apiMessage(lowStockQuery.error, 'Low stock data could not be loaded.')}</Alert> : null}
-
                 <DataTable
-                  columns={[
-                    {
-                      header: 'SKU / Product',
-                      id: 'product',
-                      cell: ({ row }) => (
-                        <div className="min-w-[200px]">
-                          <p className="font-semibold text-[var(--color-text)]">{row.original.sku || '—'}</p>
-                          <p className="text-xs text-[var(--color-muted)]">{row.original.product?.name || ''}</p>
-                        </div>
-                      ),
-                    },
-                    {
-                      header: 'On Hand',
-                      accessorKey: 'onHand',
-                      cell: ({ row }) => <span className="font-semibold text-[var(--color-danger)]">{Number(row.original.onHand).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'Reserved',
-                      accessorKey: 'reserved',
-                      cell: ({ row }) => <span>{Number(row.original.reserved).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'Available',
-                      accessorKey: 'available',
-                      cell: ({ row }) => <span className="text-[var(--color-danger)] font-semibold">{Number(row.original.available).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'Low Threshold',
-                      accessorKey: 'lowStockThreshold',
-                      cell: ({ row }) => <span>{Number(row.original.lowStockThreshold).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'Status',
-                      id: 'status',
-                      cell: () => <StatusBadge status="warning">Low stock</StatusBadge>,
-                    },
-                    {
-                      header: 'Updated',
-                      accessorKey: 'updatedAt',
-                      cell: ({ row }) => <FormattedDate value={row.original.updatedAt} withTime />,
-                    },
-                  ]}
+                  columns={lowStockColumns}
                   data={Array.isArray(lowStockQuery.data?.data) ? lowStockQuery.data.data : []}
-                  loading={lowStockQuery.isLoading}
-                  emptyTitle="No low stock items"
-                  emptyDescription="All inventory items are above their low stock threshold."
-                  rowKey={(row) => row.id}
+                  {...levelRowProps}
+                  {...tableState(lowStockQuery, 'Low stock data could not be loaded.')}
+                  caption="Low stock items"
+                  emptyTitle={hasFilters ? 'No low stock items match your filters' : 'No low stock items'}
+                  emptyDescription={hasFilters ? 'Try a different search or clear the filters.' : 'All inventory items are above their low stock threshold.'}
+                  emptyAction={clearAction}
                 />
+                {footer(lowStockQuery)}
               </div>
             </TabsContent>
 
             <TabsContent value="movements">
               <div className="grid gap-3">
                 <div className="flex flex-wrap items-end gap-3">
-                  <Field label="Search" className="min-w-56 flex-1 sm:max-w-sm">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={15} />
-                      <Input className="!min-h-10 !pl-9" value={search} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Search variant or location…" />
-                    </div>
+                  {locationField}
+                  <Field label="Reason" className="min-w-40">
+                    <NativeSelect value={params.reason} onChange={(e) => setParams({ reason: e.target.value })} options={[{ value: '', label: 'All reasons' }, ...ADJUSTMENT_REASONS]} />
                   </Field>
-                  <Field label="Location" className="min-w-40">
-                    <NativeSelect
-                      value={locationId}
-                      onChange={(e) => { setLocationId(e.target.value); setPage(1); }}
-                      options={[
-                        { value: '', label: 'All locations' },
-                        ...(locationsQuery.data || []).map((loc) => ({ value: loc.id, label: `${loc.code} — ${loc.name}` })),
-                      ]}
-                    />
-                  </Field>
-                  <Button size="sm" variant="secondary" onClick={() => movementsQuery.refetch()}><RefreshCw size={15} />Refresh</Button>
+                  {hasFilters ? clearAction : null}
+                  {refreshButton}
                 </div>
 
-                {movementsQuery.isLoading ? <Skeleton className="h-48" /> : null}
-                {movementsQuery.error ? <Alert tone="error">{apiMessage(movementsQuery.error, 'Movement ledger could not be loaded.')}</Alert> : null}
-
                 <DataTable
-                  columns={[
-                    {
-                      header: 'Variant',
-                      id: 'variant',
-                      cell: ({ row }) => (
-                        <div>
-                          <p className="font-semibold text-[var(--color-text)]">{row.original.variant?.sku || '—'}</p>
-                          <p className="text-xs text-[var(--color-muted)]">{row.original.variant?.title || ''}</p>
-                        </div>
-                      ),
-                    },
-                    {
-                      header: 'Location',
-                      cell: ({ row }) => <span className="text-sm">{row.original.location ? row.original.location.code : '—'}</span>,
-                    },
-                    {
-                      header: 'Qty Δ',
-                      accessorKey: 'quantityDelta',
-                      cell: ({ row }) => {
-                        const delta = Number(row.original.quantityDelta);
-                        return (
-                          <span className={cn(delta >= 0 && 'text-[var(--color-success)]', delta < 0 && 'text-[var(--color-danger)]')}>
-                            {delta >= 0 ? '+' : ''}{delta.toLocaleString()}
-                          </span>
-                        );
-                      },
-                    },
-                    {
-                      header: 'Before',
-                      accessorKey: 'onHandBefore',
-                      cell: ({ row }) => <span className="text-[var(--color-muted)]">{Number(row.original.onHandBefore).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'After',
-                      accessorKey: 'onHandAfter',
-                      cell: ({ row }) => <span className="font-semibold">{Number(row.original.onHandAfter).toLocaleString()}</span>,
-                    },
-                    {
-                      header: 'Reason',
-                      accessorKey: 'reason',
-                      cell: ({ row }) => <span className="capitalize">{row.original.reason?.replace(/_/g, ' ') || '—'}</span>,
-                    },
-                    {
-                      header: 'Actor',
-                      accessorKey: 'actor',
-                      cell: ({ row }) => <span>{row.original.actor?.name || 'System'}</span>,
-                    },
-                    {
-                      header: 'Order/Ref',
-                      id: 'correlation',
-                      cell: ({ row }) => (
-                        <span className="text-xs text-[var(--color-muted)]">
-                          {row.original.orderId ? `Order: ${row.original.orderId}` : row.original.correlationId ? `Ref: ${row.original.correlationId?.slice(0, 8)}…` : '—'}
-                        </span>
-                      ),
-                    },
-                    {
-                      header: 'Date',
-                      accessorKey: 'createdAt',
-                      cell: ({ row }) => <FormattedDate value={row.original.createdAt} withTime />,
-                    },
-                  ]}
+                  columns={movementColumns}
                   data={Array.isArray(movementsQuery.data?.data) ? movementsQuery.data.data : []}
-                  loading={movementsQuery.isLoading}
-                  emptyTitle="No movement records found"
-                  emptyDescription="Inventory movements will appear here as they occur."
                   rowKey={(row) => row.id}
+                  minWidth={960}
+                  {...tableState(movementsQuery, 'Movement ledger could not be loaded.')}
+                  caption="Inventory movements"
+                  emptyTitle={hasFilters ? 'No movements match your filters' : 'No movement records found'}
+                  emptyDescription={hasFilters ? 'Try a different location or reason, or clear the filters.' : 'Inventory movements will appear here as they occur.'}
+                  emptyAction={clearAction}
                 />
-
-                {movementsQuery.data?.meta?.pageCount > 1 ? (
-                  <Pagination page={page} totalPages={movementsQuery.data.meta.pageCount} onChange={setPage} className="justify-end" />
-                ) : null}
+                {footer(movementsQuery)}
               </div>
             </TabsContent>
           </TabsRoot>
@@ -529,14 +503,14 @@ export function InventoryManager() {
         conflictData={conflictData}
         onResolved={() => {
           setConflictOpen(false);
-          queryClient.invalidateQueries({ queryKey: ['admin-inventory-levels'] });
-          queryClient.invalidateQueries({ queryKey: ['admin-inventory-low-stock'] });
-          queryClient.invalidateQueries({ queryKey: ['admin-inventory-movements'] });
+          // Carry the reviewed server version back into the still-open adjustment form; the user must resubmit.
+          if (conflictData?.version) setAdjustForm((current) => ({ ...current, version: String(conflictData.version) }));
         }}
       />
     </div>
   );
 }
+
 
 function AdjustmentDialog({ open, onOpenChange, locations, form, setForm, errors, setErrors, onSubmit, loading }) {
   return (
@@ -601,10 +575,6 @@ function AdjustmentDialog({ open, onOpenChange, locations, form, setForm, errors
           <Field label="Note" hint="Optional note for this adjustment.">
             <Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Reason for adjustment…" />
           </Field>
-
-          <Field label="Idempotency Key" hint="Unique key to prevent duplicate adjustments." required error={errors.idempotencyKey}>
-            <Input value={form.idempotencyKey} onChange={(e) => setForm({ ...form, idempotencyKey: e.target.value })} placeholder="Auto-generated or paste…" />
-          </Field>
         </div>
       </DialogContent>
     </DialogRoot>
@@ -620,12 +590,12 @@ function VersionConflictDialog({ open, onOpenChange, conflictData, onResolved })
         footer={
           <>
             <Button variant="secondary" onClick={() => onOpenChange(false)}>Dismiss</Button>
-            <Button onClick={() => onResolved()}>Refresh and Review</Button>
+            <Button disabled={!conflictData} onClick={() => onResolved()}>Use latest version and review</Button>
           </>
         }
       >
         <div className="grid gap-4">
-          <Alert tone="warning">The inventory record has been updated by another user. Refresh to see the latest balance.</Alert>
+          <Alert tone="warning">The inventory record has been updated by another user. Review the latest balance below, then confirm your adjustment again.</Alert>
           {conflictData ? (
             <div className="grid gap-3 rounded-lg border border-[var(--color-border)] p-4">
               <h3 className="text-sm font-semibold">Current Record</h3>

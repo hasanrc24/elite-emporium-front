@@ -5,9 +5,9 @@ import { cn } from '@/lib/utils';
 
 const TONES = {
   info: { cls: 'border-[var(--color-border)] bg-[var(--color-primary-soft)] text-[var(--color-primary-strong)]', Icon: Info },
-  success: { cls: 'border-[color-mix(in_srgb,var(--color-success)_24%,white)] bg-[color-mix(in_srgb,var(--color-success)_7%,white)] text-[var(--color-success)]', Icon: CheckCircle2 },
-  warning: { cls: 'border-[color-mix(in_srgb,var(--color-warning)_24%,white)] bg-[color-mix(in_srgb,var(--color-warning)_7%,white)] text-[var(--color-warning)]', Icon: AlertTriangle },
-  error: { cls: 'border-[color-mix(in_srgb,var(--color-danger)_24%,white)] bg-[color-mix(in_srgb,var(--color-danger)_7%,white)] text-[var(--color-danger)]', Icon: AlertCircle }
+  success: { cls: 'border-[color-mix(in_srgb,var(--color-success)_24%,transparent)] bg-[color-mix(in_srgb,var(--color-success)_7%,transparent)] text-[var(--color-success)]', Icon: CheckCircle2 },
+  warning: { cls: 'border-[color-mix(in_srgb,var(--color-warning)_24%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_7%,transparent)] text-[var(--color-warning)]', Icon: AlertTriangle },
+  error: { cls: 'border-[color-mix(in_srgb,var(--color-danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--color-danger)_7%,transparent)] text-[var(--color-danger)]', Icon: AlertCircle }
 };
 
 export function Alert({ tone = 'info', title, children, action, className, icon: IconOverride, role }) {

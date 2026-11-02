@@ -1,5 +1,28 @@
 import { notFound } from 'next/navigation';
 import { StructuredContent } from '@/components/storefront/structured-content';
 import { serverGet } from '@/lib/api/server-api';
-export async function generateMetadata({ params }) { const { locale, slug } = await params; try { const page = await serverGet(`/pages/${slug}`, { locale, revalidate: 60 }); return { title: page.seo.title, description: page.seo.description }; } catch { return { title: 'Page' }; } }
-export default async function ContentPage({ params }) { const { locale, slug } = await params; let page; try { page = await serverGet(`/pages/${slug}`, { locale, revalidate: 60, tags: [`page:${slug}`] }); } catch { notFound(); } return <div className="container py-10 md:py-14"><div className="mx-auto max-w-4xl"><p className="eyebrow">Elite Emporium</p><h1 className="storefront-page-title mt-2">{page.title}</h1>{page.excerpt ? <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--color-muted)]">{page.excerpt}</p> : null}<div className="mt-9 border-t border-[var(--color-border)] pt-8"><StructuredContent blocks={page.blocks} locale={locale} /></div></div></div>; }
+
+async function loadPage(slug, locale) {
+  try { return await serverGet(`/pages/${encodeURIComponent(slug)}`, { locale, revalidate: 60, tags: [`page:${slug}`] }); } catch (error) { if (error.status === 404) return null; throw error; }
+}
+
+export async function generateMetadata({ params }) {
+  const { locale, slug } = await params;
+  const page = await loadPage(slug, locale).catch(() => null);
+  return page ? { title: page.seo?.title || page.title, description: page.seo?.description, alternates: { canonical: `/${locale}/page/${slug}`, languages: { en: `/en/page/${slug}`, bn: `/bn/page/${slug}` } } } : { title: 'Page' };
+}
+
+export default async function ContentPage({ params }) {
+  const { locale, slug } = await params;
+  const page = await loadPage(slug, locale);
+  if (!page) notFound();
+  return (
+    <div className="container py-8 md:py-12">
+      <div className="mx-auto max-w-3xl">
+        <h1 className="page-heading">{page.title}</h1>
+        {page.excerpt ? <p className="mt-3 text-[16px] leading-7 text-[var(--color-muted)]">{page.excerpt}</p> : null}
+        <div className="mt-8 border-t border-[var(--color-border)] pt-8"><StructuredContent blocks={page.blocks} locale={locale} /></div>
+      </div>
+    </div>
+  );
+}

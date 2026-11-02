@@ -3,156 +3,205 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
-import { ChevronRight, Crown, Heart, Home, Menu, Search, ShoppingBag, Store, UserRound, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { useQuery } from '@tanstack/react-query';
-import { cartApi } from '@/lib/api/cart-api';
+import { ChevronDown, ChevronRight, Globe, Heart, Home, LayoutGrid, Menu, Moon, PackageSearch, Search, ShoppingBag, Sun, UserRound } from 'lucide-react';
 import { wishlistApi } from '@/lib/api/wishlist-api';
 import { useAuthStore } from '@/lib/auth/auth-store';
-import { Badge, IconButton, Input } from '@/components/ui';
+import { useCart } from '@/lib/hooks/use-cart';
+import { formatNumber, localizedHref } from '@/lib/storefront';
+import { setTheme, useTheme } from '@/lib/theme';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { useUiStore } from '@/lib/ui-store';
+import { Sheet } from './sheet';
+import { SearchOverlay } from './search-overlay';
+import { CartDrawer } from './cart-drawer';
 
-function localizedHref(url, locale) {
-  if (!url) return `/${locale}`;
-  if (/^https:\/\//.test(url)) return url;
-  return `/${locale}${url.startsWith('/') ? url : `/${url}`}`;
+function Wordmark({ store, locale }) {
+  const name = store?.name?.[locale] || store?.name?.en || 'Elite Emporium';
+  if (store?.logo?.url) return <Image src={store.logo.url} alt={store.logo.altText || name} width={300} height={72} className="h-8 w-auto max-w-[150px] object-contain md:h-9" priority />;
+  return <span className={`text-[15px] font-medium md:text-[17px] ${locale === 'bn' ? '' : 'uppercase tracking-[.24em]'}`}>{locale === 'bn' ? name : 'Elite Emporium'}</span>;
 }
 
-export function Header({ locale, labels, menu, announcement, store }) {
-  const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const auth = useAuthStore();
-  const cart = useQuery({ queryKey: ['cart', locale], queryFn: () => cartApi.current(locale) });
+function useCount(locale) {
+  const { cart } = useCart(locale);
   const wishlist = useQuery({ queryKey: ['wishlist', locale], queryFn: () => wishlistApi.current(locale) });
+  return { cartCount: cart.data?.itemCount || 0, wishlistCount: wishlist.data?.itemCount || 0 };
+}
+
+function CountBadge({ count }) {
+  const locale = useLocale();
+  if (!count) return null;
+  return <span className="absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[var(--color-text)] px-1 text-[10px] font-medium leading-none text-[var(--color-bg)] tabular-nums">{count > 99 ? `${formatNumber(99, locale)}+` : formatNumber(count, locale)}</span>;
+}
+
+export function Header({ locale, menu, categories = [], announcement, store }) {
+  const t = useTranslations('Nav');
+  const pathname = usePathname();
+  const auth = useAuthStore();
+  const { cartCount, wishlistCount } = useCount(locale);
+  const { setCartOpen, setSearchOpen, menuOpen, setMenuOpen } = useUiStore();
+  const [scrolled, setScrolled] = useState(false);
   const otherLocale = locale === 'en' ? 'bn' : 'en';
-  const translatedPath = pathname.replace(/^\/(en|bn)(?=\/|$)/, `/${otherLocale}`);
+  const translatedPath = (pathname || `/${locale}`).replace(/^\/(en|bn)(?=\/|$)/, `/${otherLocale}`);
+  const topCategories = categories.filter((category) => !category.parentId).slice(0, 8);
   const items = menu?.items?.length
     ? menu.items
     : [
-        { id: 'home', label: labels.home, url: '/' },
-        { id: 'shop', label: labels.shop, url: '/shop' },
-        { id: 'track', label: labels.track, url: '/track-order' }
+        { id: 'new', label: t('newArrivals'), url: '/shop?sort=newest' },
+        ...topCategories.slice(0, 5).map((category) => ({ id: category.id, label: category.name, url: `/category/${category.slug}` })),
+        { id: 'sale', label: t('sale'), url: '/shop?sale=true' }
       ];
-  const isActive = (url) => pathname === localizedHref(url, locale) || (url !== '/' && pathname.startsWith(localizedHref(url, locale)));
-  const storeName = store?.name?.[locale] || store?.name?.en || 'Elite Emporium';
-  const logo = store?.logo;
+  const accountHref = auth.status === 'authenticated' ? `/${locale}/account` : `/${locale}/login`;
+  const checkout = pathname?.startsWith(`/${locale}/checkout`);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  // Navigating closes any open storefront overlay.
+  useEffect(() => { setMenuOpen(false); setSearchOpen(false); }, [pathname, setMenuOpen, setSearchOpen]);
+
+  const announcementText = announcement?.enabled ? (locale === 'bn' ? announcement.textBn : announcement.textEn) : null;
 
   return (
     <>
-      {announcement?.enabled ? (
-        <div className="bg-[var(--color-primary-strong)] px-4 py-2 text-center text-[11px] font-medium tracking-[.08em] text-white/90 sm:text-xs">
-          {announcement.url ? (
-            <Link className="inline-flex items-center gap-1.5 transition hover:text-white" href={localizedHref(announcement.url, locale)}>
-              {locale === 'bn' ? announcement.textBn : announcement.textEn}
-              <ChevronRight size={13} />
-            </Link>
-          ) : (
-            locale === 'bn' ? announcement.textBn : announcement.textEn
-          )}
+      {announcementText && !checkout ? (
+        <div className="bg-[var(--color-text)] px-4 py-2 text-center text-[12px] tracking-[.02em] text-[var(--color-bg)]">
+          {announcement.url ? <Link className="inline-flex items-center gap-1 hover:underline" href={localizedHref(announcement.url, locale)}>{announcementText}<ChevronRight size={13} /></Link> : announcementText}
         </div>
       ) : null}
-      <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-white/95 backdrop-blur-xl">
-        <div className="container flex min-h-[68px] items-center gap-4">
-          <IconButton
-            icon={mobileOpen ? X : Menu}
-            label={mobileOpen ? 'Close navigation' : 'Open navigation'}
-            variant="ghost"
-            className="md:hidden"
-            aria-expanded={mobileOpen}
-            onClick={() => setMobileOpen((value) => !value)}
-          />
-          <Link href={`/${locale}`} className="group flex shrink-0 items-center gap-3" aria-label={`${storeName} home`}>
-            {logo?.url ? (
-              <Image src={logo.url} alt={logo.altText || storeName} width={160} height={40} className="h-10 max-w-[160px] object-contain transition group-hover:scale-[1.02]" priority />
-            ) : (
-              <>
-                <span className="grid size-9 place-items-center text-[var(--color-primary)] transition group-hover:scale-105"><Crown size={27} strokeWidth={1.7} /></span>
-                <span className="hidden leading-none sm:block">
-                  <span className="block text-[12px] font-bold tracking-[.13em]">ELITE</span>
-                  <span className="mt-1 block text-[9px] font-semibold tracking-[.2em] text-[var(--color-muted)]">EMPORIUM</span>
-                </span>
-              </>
-            )}
+      <header className={`sticky top-0 z-40 border-b bg-[var(--color-bg)]/95 backdrop-blur transition-[border-color,box-shadow] ${scrolled ? 'border-[var(--color-border)] shadow-[0_1px_0_rgb(0_0_0/.02)]' : 'border-transparent'}`}>
+        <div className="container grid h-[var(--header-height)] grid-cols-[1fr_auto_1fr] items-center gap-3 lg:grid-cols-[auto_1fr_auto]">
+          <div className="flex items-center gap-1 lg:hidden">
+            {!checkout ? <button type="button" onClick={() => setMenuOpen(true)} aria-label={t('menu')} aria-expanded={menuOpen} className="-ml-2 grid size-11 place-items-center"><Menu size={22} /></button> : null}
+            {!checkout ? <button type="button" onClick={() => setSearchOpen(true)} aria-label={t('search')} className="grid size-11 place-items-center"><Search size={20} /></button> : null}
+          </div>
+          <Link href={`/${locale}`} className="justify-self-center lg:justify-self-start" aria-label={`${store?.name?.[locale] || 'Elite Emporium'} — ${t('home')}`}>
+            <Wordmark store={store} locale={locale} />
           </Link>
-          <nav aria-label="Main navigation" className="ml-4 hidden items-stretch self-stretch md:flex">
-            {items.map((item) => (
-              <Link
-                key={item.id}
-                href={localizedHref(item.url, locale)}
-                aria-current={isActive(item.url) ? 'page' : undefined}
-                className={`relative flex items-center px-3 text-[12px] font-semibold transition ${isActive(item.url) ? 'text-[var(--color-primary)] after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-[var(--color-primary)]' : 'text-[var(--color-text)] hover:text-[var(--color-primary)]'}`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          <form action={`/${locale}/search`} className="ml-auto hidden max-w-72 flex-1 lg:flex">
-            <label className="sr-only" htmlFor="header-search">Search products</label>
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={17} />
-              <Input id="header-search" name="q" minLength={2} placeholder={locale === 'bn' ? 'পণ্য খুঁজুন…' : 'Search dresses, styles…'} className="pl-10 pr-3" />
-            </div>
-          </form>
-          <div className="ml-auto flex items-center gap-1 lg:ml-0">
-            <Link href={translatedPath} hrefLang={otherLocale} aria-label={`Switch language to ${otherLocale}`} className="grid min-h-10 min-w-10 place-items-center rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-[11px] font-bold uppercase transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
-              {otherLocale}
-            </Link>
-            <UtilityLink href={`/${locale}/wishlist`} label={`Wishlist, ${wishlist.data?.itemCount || 0} items`} count={wishlist.data?.itemCount}>
-              <Heart size={20} />
-            </UtilityLink>
-            <UtilityLink href={auth.status === 'authenticated' ? `/${locale}/account/orders` : `/${locale}/login`} label={auth.status === 'authenticated' ? labels.account : labels.login}>
-              <UserRound size={20} />
-            </UtilityLink>
-            <UtilityLink href={`/${locale}/cart`} label={`${labels.cart}, ${cart.data?.itemCount || 0} items`} count={cart.data?.itemCount}>
-              <ShoppingBag size={21} />
-            </UtilityLink>
+          {!checkout ? (
+            <nav aria-label="Main" className="hidden justify-center lg:flex">
+              <ul className="flex items-center gap-1">
+                {items.map((item) => <DesktopNavItem key={item.id} item={item} locale={locale} pathname={pathname} />)}
+              </ul>
+            </nav>
+          ) : <span className="hidden lg:block" />}
+          <div className="flex items-center justify-end gap-0.5">
+            {!checkout ? (
+              <>
+                <button type="button" onClick={() => setSearchOpen(true)} aria-label={t('search')} className="hidden size-11 place-items-center lg:grid"><Search size={20} /></button>
+                <Link href={translatedPath} hrefLang={otherLocale} lang={otherLocale} aria-label={t('languageLabel')} className="hidden h-11 items-center gap-1.5 px-2 text-[13px] lg:flex"><Globe size={17} />{t('language')}</Link>
+                <ThemeToggle label={t('theme')} className="hidden size-11 lg:grid" />
+                <Link href={accountHref} aria-label={auth.status === 'authenticated' ? t('account') : t('login')} className="hidden size-11 place-items-center lg:grid"><UserRound size={20} /></Link>
+                <Link href={`/${locale}/wishlist`} aria-label={`${t('wishlist')} (${wishlistCount})`} className="relative hidden size-11 place-items-center lg:grid"><Heart size={20} /><CountBadge count={wishlistCount} /></Link>
+              </>
+            ) : null}
+            <button type="button" onClick={() => setCartOpen(true)} aria-label={`${t('cart')} (${cartCount})`} className="relative -mr-2 grid size-11 place-items-center"><ShoppingBag size={21} /><CountBadge count={cartCount} /></button>
           </div>
         </div>
-
-        {mobileOpen ? (
-          <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-md)] md:hidden">
-            <nav aria-label="Mobile navigation" className="container grid gap-1 py-4">
-              <form action={`/${locale}/search`} className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" size={18} />
-                <Input name="q" minLength={2} aria-label="Search products" placeholder="Search products…" className="pl-10" />
-              </form>
-              {items.map((item) => (
-                <Link key={item.id} className={`flex items-center justify-between rounded-[var(--radius-sm)] px-4 py-3 text-sm font-semibold transition ${isActive(item.url) ? 'bg-[var(--color-primary-soft)] text-[var(--color-primary)]' : 'hover:bg-[var(--color-surface-muted)]'}`} onClick={() => setMobileOpen(false)} href={localizedHref(item.url, locale)}>
-                  {item.label}
-                  <ChevronRight size={17} />
-                </Link>
-              ))}
-              <Link className="flex items-center justify-between rounded-[var(--radius-sm)] px-4 py-3 text-sm font-semibold hover:bg-[var(--color-surface-muted)]" onClick={() => setMobileOpen(false)} href={`/${locale}/wishlist`}>
-                Wishlist
-                <ChevronRight size={17} />
-              </Link>
-            </nav>
-          </div>
-        ) : null}
       </header>
-      <nav aria-label="Mobile shortcuts" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[var(--color-border)] bg-white/96 px-2 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgb(20_18_15_/.08)] backdrop-blur-xl md:hidden">
-        <MobileShortcut href={`/${locale}`} label="Home" Icon={Home} active={pathname === `/${locale}`} />
-        <MobileShortcut href={`/${locale}/shop`} label="Shop" Icon={Store} active={pathname.startsWith(`/${locale}/shop`)} />
-        <MobileShortcut href={`/${locale}/wishlist`} label="Saved" Icon={Heart} count={wishlist.data?.itemCount} active={pathname.startsWith(`/${locale}/wishlist`)} />
-        <MobileShortcut href={auth.status === 'authenticated' ? `/${locale}/account` : `/${locale}/login`} label="Account" Icon={UserRound} active={pathname.includes('/account') || pathname.includes('/login')} />
-        <MobileShortcut href={`/${locale}/cart`} label="Bag" Icon={ShoppingBag} count={cart.data?.itemCount} active={pathname.startsWith(`/${locale}/cart`)} />
-      </nav>
+
+      <MobileMenu locale={locale} items={items} categories={topCategories} open={menuOpen} onOpenChange={setMenuOpen} translatedPath={translatedPath} otherLocale={otherLocale} accountHref={accountHref} />
+      <SearchOverlay locale={locale} categories={topCategories} />
+      <CartDrawer locale={locale} />
+
+      {!checkout ? (
+        <nav aria-label={t('menu')} className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[var(--color-border)] bg-[var(--color-bg)] pb-[env(safe-area-inset-bottom)] md:hidden">
+          <BottomLink href={`/${locale}`} label={t('home')} Icon={Home} active={pathname === `/${locale}`} />
+          <BottomButton label={t('categories')} Icon={LayoutGrid} onClick={() => setMenuOpen(true)} active={menuOpen} />
+          <BottomButton label={t('search')} Icon={Search} onClick={() => setSearchOpen(true)} />
+          <BottomLink href={`/${locale}/wishlist`} label={t('wishlist')} Icon={Heart} count={wishlistCount} active={pathname?.startsWith(`/${locale}/wishlist`)} />
+          <BottomLink href={accountHref} label={t('account')} Icon={UserRound} active={pathname?.includes('/account') || pathname?.endsWith('/login')} />
+        </nav>
+      ) : null}
     </>
   );
 }
 
-function MobileShortcut({ href, label, Icon, active, count = 0 }) {
-  return <Link href={href} className={`relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[9px] font-semibold ${active ? 'text-[var(--color-primary)]' : 'text-[var(--color-muted)]'}`}><span className="relative"><Icon size={18} />{count ? <i className="absolute -right-2 -top-1 grid min-h-3.5 min-w-3.5 place-items-center rounded-full bg-[var(--color-primary-strong)] px-1 text-[8px] not-italic text-white">{count}</i> : null}</span>{label}</Link>;
+function DesktopNavItem({ item, locale, pathname }) {
+  const href = localizedHref(item.url, locale);
+  const active = pathname === href.split('?')[0];
+  const linkClass = `relative inline-flex h-[var(--header-height)] items-center gap-1 px-3 text-[14px] transition after:absolute after:inset-x-3 after:bottom-[18px] after:h-px after:origin-left after:bg-current after:transition-transform ${active ? 'after:scale-x-100' : 'after:scale-x-0 hover:after:scale-x-100'}`;
+  if (!item.children?.length) return <li><Link href={href} className={linkClass} aria-current={active ? 'page' : undefined}>{item.label}</Link></li>;
+  return (
+    <li className="group relative">
+      <Link href={href} className={linkClass} aria-haspopup="true">{item.label}<ChevronDown size={14} className="transition group-hover:rotate-180" /></Link>
+      <div className="invisible absolute left-1/2 top-full z-50 min-w-56 -translate-x-1/2 border border-[var(--color-border)] bg-[var(--color-bg)] p-2 opacity-0 shadow-[var(--shadow-md)] transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+        <ul className="grid">
+          {item.children.map((child) => <li key={child.id}><Link href={localizedHref(child.url, locale)} className="block rounded-[var(--radius-sm)] px-3 py-2 text-sm hover:bg-[var(--color-surface)]">{child.label}</Link></li>)}
+        </ul>
+      </div>
+    </li>
+  );
 }
 
-function UtilityLink({ href, label, count = 0, children }) {
+function MobileMenu({ locale, items, categories, open, onOpenChange, translatedPath, otherLocale, accountHref }) {
+  const t = useTranslations('Nav');
+  const close = () => onOpenChange(false);
   return (
-    <Link href={href} aria-label={label} className="relative grid size-10 place-items-center rounded-[var(--radius-sm)] text-[var(--color-muted)] transition hover:bg-[var(--color-primary-soft)] hover:text-[var(--color-primary)] active:scale-95 sm:size-11">
-      {children}
-      {count ? (
-        <Badge tone="danger" className="absolute right-0 top-0 grid min-h-[18px] min-w-[18px] place-items-center !rounded-md border-2 !border-[var(--color-bg)] !bg-[var(--color-primary)] !px-1 !text-[9px] !text-white">
-          {count > 99 ? '99+' : count}
-        </Badge>
-      ) : null}
+    <Sheet open={open} onOpenChange={onOpenChange} side="left" title={t('menu')} closeLabel={t('closeMenu')}>
+      <div className="grid gap-6 p-5">
+        {categories.length ? (
+          <div className="grid grid-cols-3 gap-3">
+            {categories.slice(0, 6).map((category) => (
+              <Link key={category.id} href={`/${locale}/category/${category.slug}`} onClick={close} className="grid justify-items-center gap-2 text-center text-[12px]">
+                <span className="relative block aspect-square w-full overflow-hidden rounded-full bg-[var(--color-surface)]">{category.imageUrl ? <Image src={category.imageUrl} alt="" fill sizes="96px" className="object-cover" /> : <span className="grid h-full place-items-center text-lg font-medium text-[var(--color-muted)]">{category.name.slice(0, 1)}</span>}</span>
+                <span className="line-clamp-2">{category.name}</span>
+              </Link>
+            ))}
+          </div>
+        ) : null}
+        <ul className="divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
+          {items.map((item) => (
+            <li key={item.id}>
+              <Link href={localizedHref(item.url, locale)} onClick={close} className="flex min-h-12 items-center justify-between text-[15px]">{item.label}<ChevronRight size={16} className="text-[var(--color-muted)]" /></Link>
+              {item.children?.length ? <ul className="pb-2 pl-3">{item.children.map((child) => <li key={child.id}><Link href={localizedHref(child.url, locale)} onClick={close} className="flex min-h-10 items-center text-sm text-[var(--color-muted)]">{child.label}</Link></li>)}</ul> : null}
+            </li>
+          ))}
+        </ul>
+        <ul className="grid gap-1 text-[15px]">
+          <li><Link href={accountHref} onClick={close} className="flex min-h-11 items-center gap-3"><UserRound size={18} />{t('account')}</Link></li>
+          <li><Link href={`/${locale}/track-order`} onClick={close} className="flex min-h-11 items-center gap-3"><PackageSearch size={18} />{t('track')}</Link></li>
+          <li><Link href={`/${locale}/contact`} onClick={close} className="flex min-h-11 items-center gap-3"><ChevronRight size={18} />{t('help')}</Link></li>
+          <li><Link href={translatedPath} hrefLang={otherLocale} lang={otherLocale} onClick={close} className="flex min-h-11 items-center gap-3"><Globe size={18} />{t('language')}</Link></li>
+          <li><ThemeSwitchRow label={t('theme')} /></li>
+        </ul>
+      </div>
+    </Sheet>
+  );
+}
+
+function ThemeSwitchRow({ label }) {
+  const dark = useTheme() === 'dark';
+  return (
+    <button type="button" role="switch" aria-checked={dark} onClick={() => setTheme(dark ? 'light' : 'dark')} className="flex min-h-11 w-full items-center gap-3 text-left">
+      {dark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+      <span className="flex-1">{label}</span>
+      <span aria-hidden="true" className={`relative h-6 w-10 rounded-full transition-colors ${dark ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border-strong)]'}`}>
+        <span className={`absolute top-0.5 size-5 rounded-full bg-[var(--color-bg)] shadow-sm transition-[left] ${dark ? 'left-[1.125rem]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  );
+}
+
+function BottomLink({ href, label, Icon, active, count = 0 }) {
+  return (
+    <Link href={href} aria-current={active ? 'page' : undefined} className={`flex min-h-[60px] flex-col items-center justify-center gap-1 text-[11px] ${active ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}`}>
+      <span className="relative"><Icon size={20} strokeWidth={active ? 2.1 : 1.7} /><CountBadge count={count} /></span>
+      {label}
     </Link>
+  );
+}
+
+function BottomButton({ label, Icon, onClick, active = false }) {
+  return (
+    <button type="button" onClick={onClick} className={`flex min-h-[60px] flex-col items-center justify-center gap-1 text-[11px] ${active ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]'}`}>
+      <Icon size={20} strokeWidth={1.7} />
+      {label}
+    </button>
   );
 }

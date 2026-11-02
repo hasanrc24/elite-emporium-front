@@ -1,651 +1,617 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, forwardRef, useImperativeHandle, useState, useCallback, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Eye, Save } from 'lucide-react';
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, Field, Input, NativeSelect, Skeleton, Textarea, ImageUpload } from '@/components/ui';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Circle, X } from 'lucide-react';
+import { Alert, Badge, Button, Checkbox, Combobox, Field, Input, MultiSelect, NativeSelect, Skeleton, Textarea } from '@/components/ui';
+import { Card, CardBody } from '@/components/ui';
+import { successToast, errorToast } from '@/components/ui/toast';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
-import { DialogRoot, DialogTrigger, DialogContent } from '@/components/ui/overlay';
+import { useAuthStore } from '@/lib/auth/auth-store';
+import { MediaSection } from './products/media-section';
+import { VariantSection } from './products/variant-section';
+import { useUnsavedGuard } from './products/use-unsaved-guard';
+import { useMinProductImages } from './products/use-min-images';
+import {
+  MAX_RELATED,
+  buildPayload,
+  describeServerChanges,
+  emptyProduct,
+  fieldId,
+  isVersionConflict,
+  labelForPath,
+  mapFieldErrors,
+  normalizeProduct,
+  publishReadiness,
+  rebaseOnto,
+  sectionForPath,
+  slugify,
+  snapshotOf,
+  sortErrorPaths,
+  validateProduct,
+} from './products/product-logic';
 
-const emptyTranslation = { name: '', shortDescription: '', description: '', careText: '', materialText: '', seoTitle: '', seoDescription: '' };
-const newVariant = () => ({
-  clientKey: crypto.randomUUID(),
-  sku: '',
-  barcode: '',
-  title: 'Default',
-  attributes: {},
-  attributeValueIds: [],
-  regularPrice: '',
-  salePrice: '',
-  costPrice: '',
-  stockPolicy: 'deny',
-  initialStock: 0,
-  lowStockThreshold: 3,
-  isDefault: false,
-});
+const VISIBILITY = [
+  { value: 'catalog_search', label: 'Catalog and search' },
+  { value: 'catalog', label: 'Catalog only' },
+  { value: 'search', label: 'Search only' },
+  { value: 'hidden', label: 'Hidden (direct link only)' },
+];
+const STATUS_OPTIONS = [
+  { value: 'draft', label: 'Draft: not visible on the storefront' },
+  { value: 'scheduled', label: 'Scheduled: goes live at a set time' },
+  { value: 'published', label: 'Published: visible now' },
+];
 
-const emptyProduct = {
-  slug: '',
-  categoryId: '',
-  categoryIds: [],
-  collectionIds: [],
-  brandId: '',
-  type: 'simple',
-  status: 'draft',
-  publishAt: null,
-  featured: false,
-  visibility: 'catalog_search',
-  taxClass: 'standard',
-  shippingProfile: { requiresShipping: true, freeShipping: false, shippingClass: null },
-  translations: { en: { ...emptyTranslation }, bn: { ...emptyTranslation } },
-  attributes: [],
-  variants: [{ ...newVariant(), isDefault: true }],
-  media: [],
-  version: 1,
-};
-
-function normalizeProduct(product) {
-  return {
-    ...emptyProduct,
-    ...product,
-    categoryId: product.categoryId || '',
-    brandId: product.brandId || '',
-    shippingProfile: (() => {
-      const sp = product.shippingProfile;
-      if (!sp || typeof sp !== 'object') return { requiresShipping: true, freeShipping: false, shippingClass: null };
-      return {
-        requiresShipping: Boolean(sp.requiresShipping ?? true),
-        freeShipping: Boolean(sp.freeShipping ?? false),
-        shippingClass: typeof sp.shippingClass === 'string' ? sp.shippingClass : null,
-      };
-    })(),
-    translations: { en: { ...emptyTranslation, ...(product.translations?.en || {}) }, bn: { ...emptyTranslation, ...(product.translations?.bn || {}) } },
-   variants: (product.variants || []).map((variant) => ({
-      ...variant,
-      clientKey: variant.id || variant.clientKey || crypto.randomUUID(),
-      barcode: variant.barcode || '',
-      salePrice: variant.salePrice || '',
-      costPrice: variant.costPrice || '',
-      initialStock: variant.inventory?.[0]?.onHand ?? 0,
-      lowStockThreshold: variant.inventory?.[0]?.lowStockThreshold ?? 3,
-      attributes: Object.fromEntries(Object.entries(variant.attributes || {}).filter(([k, v]) => typeof k === 'string' && typeof v === 'string')),
-    })),
-    media: (product.media || []).map((item) => ({
-      mediaId: item.mediaId,
-      role: item.role,
-      displayOrder: item.displayOrder,
-      altEn: item.altEn || '',
-      altBn: item.altBn || '',
-      variantKey: item.variantId || null,
-      previewUrl: item.asset?.url || null,
-    })),
-    attributes: (product.attributes || []).map((item) => ({
-      attributeId: item.id,
-      variation: item.variation,
-      visible: item.visible,
-      displayOrder: item.displayOrder,
-    })),
-  };
+/** Loads every page of a list endpoint (the API caps pageSize at 100). */
+async function fetchAll(path, params = {}) {
+  const rows = [];
+  for (let page = 1; page <= 20; page += 1) {
+    const response = await browserApi.get(path, { params: { ...params, page, pageSize: 100 } });
+    rows.push(...(response.data.data || []));
+    if (page >= (response.data.meta?.pageCount || 1)) break;
+  }
+  return rows;
 }
 
-const splitCsv = (value) => value.split(',').map((part) => part.trim()).filter(Boolean);
-const slugify = (text) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+const taxonomyOptions = (list, selected = []) => {
+  const options = (list || []).map((item) => ({ value: item.id, label: item.translations?.en?.name || item.slug }));
+  const known = new Set(options.map((option) => option.value));
+  for (const id of selected) if (id && !known.has(id) && list) options.push({ value: id, label: 'Archived or unavailable' });
+  return options;
+};
 
-export const ProductEditor = forwardRef(function ProductEditor({ id, withHeader = false, onActionStateChange }, ref) {
+export const ProductEditor = forwardRef(function ProductEditor({ id, onActionStateChange, focusPath }, ref) {
   const isNew = !id;
+  const [mountedAt] = useState(() => Date.now());
   const query = useQuery({
     queryKey: ['admin-product', id],
     enabled: !isNew,
+    refetchOnMount: 'always',
     queryFn: () => browserApi.get(`/admin/products/${id}`).then((response) => response.data.data),
   });
 
-  if (isNew) return <ProductEditorForm id={null} initialProduct={emptyProduct} isNew withHeader={withHeader} ref={ref} onActionStateChange={onActionStateChange} />;
-  if (query.isLoading) {
-    return (
-      <Card>
-        <Skeleton className="h-40" />
-      </Card>
-    );
+  if (isNew) return <ProductEditorForm id={null} initialProduct={emptyProduct()} ref={ref} onActionStateChange={onActionStateChange} focusPath={focusPath} />;
+  if (query.error && !query.data) return <Alert tone="error">{apiMessage(query.error, 'Could not load this product.')}</Alert>;
+  // Wait for a fetch that started after mount so a cached, older version never seeds the form.
+  if (!query.data || query.dataUpdatedAt < mountedAt) {
+    return <Card><CardBody><Skeleton className="h-40" /></CardBody></Card>;
   }
-  if (query.error) return <Alert tone="error">{apiMessage(query.error)}</Alert>;
-  return <ProductEditorForm key={`${id}:${query.data.version}`} id={id} initialProduct={query.data} isNew={false} withHeader={withHeader} ref={ref} onActionStateChange={onActionStateChange} />;
+  return <ProductEditorForm key={id} id={id} initialProduct={query.data} ref={ref} onActionStateChange={onActionStateChange} focusPath={focusPath} />;
 });
 
-const ProductEditorForm = forwardRef(function ProductEditorForm({ id, initialProduct, isNew, withHeader = true, onActionStateChange }, ref) {
+const ProductEditorForm = forwardRef(function ProductEditorForm({ id, initialProduct, onActionStateChange, focusPath }, ref) {
+  const isNew = !id;
   const router = useRouter();
-  const [form, setForm] = useState(() => normalizeProduct(initialProduct));
-  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(normalizeProduct(initialProduct)));
-  const [serverErrors, setServerErrors] = useState({});
-  const isDirty = JSON.stringify(form) !== savedSnapshot;
-  const [openSections, setOpenSections] = useState({ content: true, variants: true, media: false, advanced: false });
-  const categories = useQuery({
-    queryKey: ['admin-product-editor-categories'],
-    queryFn: () => browserApi.get('/admin/categories', { params: { pageSize: 100 } }).then((response) => response.data.data),
-  });
-  const brands = useQuery({
-    queryKey: ['admin-product-editor-brands'],
-    queryFn: () => browserApi.get('/admin/brands', { params: { pageSize: 100 } }).then((response) => response.data.data),
-  });
-  const collections = useQuery({
-    queryKey: ['admin-product-editor-collections'],
-    queryFn: () => browserApi.get('/admin/collections', { params: { pageSize: 100 } }).then((response) => response.data.data),
-  });
-  const media = useQuery({
-    queryKey: ['admin-product-editor-media'],
-    queryFn: () => browserApi.get('/admin/media', { params: { pageSize: 100 } }).then((response) => response.data.data),
-  });
+  const queryClient = useQueryClient();
+  const permissions = useAuthStore((state) => state.user?.permissions);
+  const canCost = Boolean(permissions?.includes('catalog.cost'));
+  const canPublish = Boolean(permissions?.includes('catalog.publish'));
+  const [form, setForm] = useState(() => (isNew ? initialProduct : normalizeProduct(initialProduct)));
+  const baselineRef = useRef(form);
+  const [snapshot, setSnapshot] = useState(() => snapshotOf(form));
+  const [submitted, setSubmitted] = useState(false);
+  const [serverState, setServerState] = useState({ errors: {}, message: '', at: null });
+  const [slugTouched, setSlugTouched] = useState(!isNew);
+  const [conflict, setConflict] = useState(null);
+  const [open, setOpen] = useState({ general: true, content: true, variants: true, media: true, fashion: false, relations: false, advanced: false });
+  const summaryRef = useRef(null);
+  const formRef = useRef(form);
+  useEffect(() => { formRef.current = form; }, [form]);
+  const [initialStatus, setInitialStatus] = useState(form.status);
+
+  const currentSnapshot = useMemo(() => snapshotOf(form), [form]);
+  const isDirty = currentSnapshot !== snapshot;
+  const { dialog: leaveDialog } = useUnsavedGuard(isDirty);
+
+  // Server errors describe the data that was submitted; drop them as soon as the user edits anything.
+  const serverErrors = serverState.at === currentSnapshot ? serverState.errors : {};
+  const clientErrors = useMemo(() => (submitted ? validateProduct(form) : {}), [submitted, form]);
+  const errors = { ...serverErrors, ...clientErrors };
+  const errorPaths = sortErrorPaths(Object.keys(errors).filter((path) => path !== '_form'));
+  const formMessage = serverState.at === currentSnapshot ? serverState.message : '';
+
+  const categories = useQuery({ queryKey: ['admin-editor', 'categories'], queryFn: () => fetchAll('/admin/categories', { status: 'active' }) });
+  const brands = useQuery({ queryKey: ['admin-editor', 'brands'], queryFn: () => fetchAll('/admin/brands', { status: 'active' }) });
+  const collections = useQuery({ queryKey: ['admin-editor', 'collections'], queryFn: () => fetchAll('/admin/collections', { status: 'active' }) });
+  // Size charts may not be exposed yet; the editor then shows the assigned ones read-only.
+  const sizeCharts = useQuery({ queryKey: ['admin-editor', 'size-charts'], retry: false, queryFn: () => fetchAll('/admin/size-charts') });
+  const attributes = useQuery({ queryKey: ['admin-editor', 'attributes'], queryFn: () => browserApi.get('/admin/attributes').then((response) => response.data.data) });
+
+  const jumpTo = useCallback((path) => {
+    const section = sectionForPath(path);
+    setOpen((current) => ({ ...current, [section]: true }));
+    const attempt = (triesLeft) => {
+      const element = document.getElementById(fieldId(path)) || document.getElementById(`section-${section}`);
+      if (!element && triesLeft > 0) { requestAnimationFrame(() => attempt(triesLeft - 1)); return; }
+      element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      element?.focus?.({ preventScroll: true });
+    };
+    requestAnimationFrame(() => attempt(5));
+  }, []);
+
+  useEffect(() => {
+    if (!focusPath) return undefined;
+    const timer = setTimeout(() => jumpTo(focusPath), 0);
+    return () => clearTimeout(timer);
+    // Only on mount: a "Fix" link from the view page opens the editor at the right section.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const focusFirst = useCallback((found) => {
+    const [first] = sortErrorPaths(Object.keys(found).filter((path) => path !== '_form'));
+    if (first) jumpTo(first);
+    else summaryRef.current?.focus();
+  }, [jumpTo]);
+
+  const adopt = useCallback((saved) => {
+    const normalized = normalizeProduct(saved);
+    baselineRef.current = normalized;
+    setInitialStatus(normalized.status);
+    setForm(normalized);
+    setSnapshot(snapshotOf(normalized));
+    setConflict(null);
+    setServerState({ errors: {}, message: '', at: null });
+    queryClient.setQueryData(['admin-product', saved.id], saved);
+    queryClient.invalidateQueries({ queryKey: ['admin', 'products'] });
+    return normalized;
+  }, [queryClient]);
+
+  const handleConflict = useCallback(async () => {
+    setConflict({ loading: true });
+    try {
+      const latest = normalizeProduct((await browserApi.get(`/admin/products/${id}`)).data.data);
+      setConflict({ latest, changes: describeServerChanges(baselineRef.current, latest) });
+    } catch (error) {
+      setConflict(null);
+      setServerState({ errors: {}, message: apiMessage(error, 'This product changed and the latest version could not be loaded.'), at: snapshotOf(formRef.current) });
+    }
+    summaryRef.current?.focus();
+  }, [id]);
+
+  const failure = useCallback((error, fallback) => {
+    const mapped = mapFieldErrors(error?.response?.data?.error?.fieldErrors);
+    const message = apiMessage(error, fallback);
+    setServerState({ errors: mapped, message, at: snapshotOf(formRef.current) });
+    setSubmitted(true);
+    errorToast(fallback, message);
+    if (Object.keys(mapped).length) focusFirst(mapped);
+    else requestAnimationFrame(() => summaryRef.current?.focus());
+  }, [focusFirst]);
+
   const save = useMutation({
-    onMutate: () => setServerErrors({}),
-    mutationFn: () => (isNew ? browserApi.post('/admin/products', createPayload(form)) : browserApi.patch(`/admin/products/${id}`, payload(form))).then((response) => response.data.data),
+    mutationFn: async () => {
+      const body = buildPayload(formRef.current, { isNew, canCost });
+      const response = isNew ? await browserApi.post('/admin/products', body) : await browserApi.patch(`/admin/products/${id}`, body);
+      return response.data.data;
+    },
     onSuccess: (saved) => {
-      setServerErrors({});
-      const normalized = normalizeProduct(saved);
-      setForm(normalized);
-      setSavedSnapshot(JSON.stringify(normalized));
-      if (isNew) router.replace(`/admin/products/${saved.id}`);
+      if (isNew) {
+        // Mark clean first so the leave guard does not trigger on the redirect.
+        setSnapshot(snapshotOf(formRef.current));
+        queryClient.invalidateQueries({ queryKey: ['admin', 'products'] });
+        successToast('Product created', 'You can keep adding detail, images and related products.');
+        router.replace(`/admin/products/${saved.id}?mode=edit`);
+        return;
+      }
+      adopt(saved);
+      successToast('Changes saved');
     },
     onError: (error) => {
-      const fieldErrors = error?.response?.data?.error?.fieldErrors;
-      if (fieldErrors) setServerErrors(fieldErrors);
+      if (!isNew && isVersionConflict(error)) { handleConflict(); return; }
+      failure(error, isNew ? 'Could not create the product' : 'Could not save the product');
     },
   });
+
   const publication = useMutation({
-    mutationFn: (status) => browserApi.post(`/admin/products/${id}/publication`, { version: Number(form.version), status, publishAt: status === 'scheduled' ? form.publishAt : null }).then((response) => response.data.data),
-    onSuccess: (saved) => setForm(normalizeProduct(saved)),
-  });
-  const uploadMedia = useMutation({
-    mutationFn: (data) => browserApi.post('/admin/media/upload', data).then((response) => response.data.data),
+    mutationFn: ({ status, version }) => browserApi.post(`/admin/products/${id}/publication`, { version: Number(version), status, publishAt: null }).then((response) => response.data.data),
+    onSuccess: (saved, { status }) => {
+      adopt(saved);
+      successToast(status === 'published' ? 'Product published' : 'Moved to draft');
+    },
+    onError: (error) => {
+      if (isVersionConflict(error)) { handleConflict(); return; }
+      failure(error, 'Could not change publication');
+    },
   });
 
-  const toggleSection = (section) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  const runSave = useCallback(async () => {
+    if (save.isPending || publication.isPending) return null;
+    const found = validateProduct(formRef.current);
+    setSubmitted(true);
+    if (Object.keys(found).length) {
+      focusFirst(found);
+      errorToast('Fix the highlighted fields', `${Object.keys(found).length} problem${Object.keys(found).length === 1 ? '' : 's'} need attention before saving.`);
+      return null;
+    }
+    try { return await save.mutateAsync(); } catch { return null; }
+  }, [focusFirst, publication.isPending, save]);
 
+  const runPublish = useCallback(async () => {
+    if (isNew || save.isPending || publication.isPending) return;
+    const target = formRef.current.status === 'published' ? 'draft' : 'published';
+    let version = formRef.current.version;
+    // Publication acts on the stored product, so unsaved edits are saved first and never silently dropped.
+    if (snapshotOf(formRef.current) !== snapshot) {
+      const saved = await runSave();
+      if (!saved) return;
+      version = saved.version;
+    }
+    publication.mutate({ status: target, version });
+  }, [isNew, publication, runSave, save.isPending, snapshot]);
+
+  // Ctrl/Cmd+S saves from anywhere in the form.
   useEffect(() => {
-    if (!isDirty) return undefined;
-    const warn = (event) => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [isDirty]);
+    const onKey = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); runSave(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [runSave]);
 
-  useImperativeHandle(ref, () => ({
-    save: () => save.mutate(),
-    publish: () => publication.mutate(form.status === 'published' ? 'draft' : 'published'),
-    form,
-    isDirty,
-    saveState: { isPending: save.isPending, isSuccess: save.isSuccess, error: save.error },
-    publicationState: { isPending: publication.isPending, error: publication.error },
-  }), [form, isDirty, save, publication]);
+  useImperativeHandle(ref, () => ({ save: () => runSave(), publish: () => runPublish() }), [runSave, runPublish]);
 
-   const serverErrorsRef = useRef(serverErrors);
-  useEffect(() => { serverErrorsRef.current = serverErrors; }, [serverErrors]);
   const onActionStateChangeRef = useRef(onActionStateChange);
   useEffect(() => { onActionStateChangeRef.current = onActionStateChange; }, [onActionStateChange]);
-
   useEffect(() => {
-    if (onActionStateChangeRef.current) {
-      onActionStateChangeRef.current({ savePending: save.isPending, saveSuccess: save.isSuccess, publishPending: publication.isPending, isDirty });
-    }
-  }, [save.isPending, save.isSuccess, publication.isPending, isDirty]);
+    onActionStateChangeRef.current?.({ savePending: save.isPending, publishPending: publication.isPending, isDirty, status: form.status, hasConflict: Boolean(conflict) });
+  }, [save.isPending, publication.isPending, isDirty, form.status, conflict]);
+
+  const minImages = useMinProductImages();
+  const blockers = useMemo(() => publishReadiness(form, { minImages }).filter((check) => !check.ok), [form, minImages]);
+  const toggle = (key) => setOpen((current) => ({ ...current, [key]: !current[key] }));
+  const sectionErrors = (key) => errorPaths.filter((path) => sectionForPath(path) === key).length;
+  const busy = save.isPending || publication.isPending;
+
+  const categoryOptions = taxonomyOptions(categories.data, [form.categoryId]);
 
   return (
     <div className="grid gap-5">
-      {withHeader ? (
-        <>
-          <Link href="/admin/products" className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--color-primary)]">
-            <ChevronLeft size={15} /> Back to products
-          </Link>
+      {leaveDialog}
 
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-bold tracking-[-.035em]">{isNew ? 'Add product' : form.translations.en.name || form.slug}</h1>
-                <Badge tone={form.status === 'published' ? 'success' : 'neutral'}>{form.status}</Badge>
-              </div>
-              <p className="mt-1 text-xs text-[var(--color-muted)]">{isNew ? 'Start with the basics. You can add more detail later.' : `SKU: ${form.variants[0]?.sku || 'Not set'} · Version ${form.version}`}</p>
-            </div>
-            <div className="flex gap-2">
-              {!isNew && form.status === 'published' ? <Button variant="secondary" size="sm" asChild><a href={`/en/product/${form.slug}`} target="_blank" rel="noreferrer"><Eye size={15} /> Preview</a></Button> : null}
-              {!isNew ? <Button variant="secondary" size="sm" loading={publication.isPending} onClick={() => publication.mutate(form.status === 'published' ? 'draft' : 'published')}>{form.status === 'published' ? 'Move to draft' : 'Publish'}</Button> : null}
-              <Button size="sm" loading={save.isPending} onClick={() => save.mutate()}><Save size={15} /> {isNew ? 'Create product' : isDirty ? 'Save changes' : 'Saved'}</Button>
+      {conflict?.latest ? (
+        <Alert tone="warning" title="This product changed while you were editing">
+          <div ref={summaryRef} tabIndex={-1} className="grid gap-2 outline-none">
+            <p>Someone else saved version {conflict.latest.version}. Your edits were not saved.</p>
+            {conflict.changes.length ? <ul className="list-disc pl-5 text-xs">{conflict.changes.slice(0, 8).map((change) => <li key={change}>{change}</li>)}{conflict.changes.length > 8 ? <li>and {conflict.changes.length - 8} more</li> : null}</ul> : <p className="text-xs">Details such as images, relations or inventory changed.</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="secondary" onClick={() => { const latest = conflict.latest; baselineRef.current = latest; setForm(latest); setSnapshot(snapshotOf(latest)); setConflict(null); setSubmitted(false); queryClient.invalidateQueries({ queryKey: ['admin-product', id] }); }}>Discard my edits and load latest</Button>
+              <Button size="sm" onClick={() => { const { form: rebased, dropped } = rebaseOnto(formRef.current, conflict.latest); baselineRef.current = conflict.latest; setForm(rebased); setConflict(null); if (dropped.length) errorToast('Some variants were removed', `${dropped.join(', ')} no longer exist and were dropped from your edits.`); else successToast('Edits kept', 'Review the form, then save again to overwrite the other changes.'); }}>Keep my edits on top of the latest</Button>
             </div>
           </div>
-        </>
+        </Alert>
+      ) : null}
+      {conflict?.loading ? <Alert tone="warning">This product changed elsewhere. Loading the latest version…</Alert> : null}
+
+      {(errorPaths.length || formMessage) && !conflict ? (
+        <div ref={summaryRef} tabIndex={-1} className="outline-none">
+          <Alert tone="error" title={errorPaths.length ? `Fix ${errorPaths.length} problem${errorPaths.length === 1 ? '' : 's'} to continue` : 'The product could not be saved'}>
+            {formMessage && !errorPaths.some((path) => errors[path] === formMessage) ? <p>{formMessage}</p> : null}
+            {errorPaths.length ? (
+              <ul className="mt-1 grid gap-1 text-sm">
+                {errorPaths.slice(0, 10).map((path) => (
+                  <li key={path}><button type="button" className="text-left underline underline-offset-2" onClick={() => jumpTo(path)}>{labelForPath(path)}: {errors[path]}</button></li>
+                ))}
+                {errorPaths.length > 10 ? <li>and {errorPaths.length - 10} more</li> : null}
+              </ul>
+            ) : null}
+          </Alert>
+        </div>
       ) : null}
 
-      <BasicFields form={form} setForm={setForm} categories={categories.data} brands={brands.data} serverErrors={serverErrors} clearError={() => setServerErrors({})} />
+      <Section id="general" title="Product information" description="Names, category and publication." open={open.general} onToggle={() => toggle('general')} errorCount={sectionErrors('general')}>
+        <BasicFields form={form} setForm={setForm} errors={errors} categoryOptions={categoryOptions} brands={taxonomyOptions(brands.data, [form.brandId])} slugTouched={slugTouched} setSlugTouched={setSlugTouched} isNew={isNew} blockers={blockers} onFix={jumpTo} canPublish={canPublish} initialStatus={initialStatus} />
+      </Section>
 
-      <Collapsible title="Content & SEO" open={openSections.content} onToggle={() => toggleSection('content')}>
-        <TranslationFields form={form} setForm={setForm} serverErrors={serverErrors} clearError={() => setServerErrors({})} />
-      </Collapsible>
+      <Section id="content" title="Content and SEO" description="Descriptions shown on the product page, in English and Bangla." open={open.content} onToggle={() => toggle('content')} errorCount={sectionErrors('content')}>
+        <TranslationFields form={form} setForm={setForm} errors={errors} />
+      </Section>
 
-      <Collapsible title="Pricing & Inventory" open={openSections.variants} onToggle={() => toggleSection('variants')}>
-        <VariantFields form={form} setForm={setForm} isNew={isNew} serverErrors={serverErrors} clearError={() => setServerErrors({})} />
-      </Collapsible>
+      <Section id="variants" title="Pricing and inventory" description="Prices in BDT, stock and variants." open={open.variants} onToggle={() => toggle('variants')} errorCount={sectionErrors('variants')}>
+        <VariantSection form={form} setForm={setForm} errors={errors} attributes={attributes.data} attributesState={attributes} canCost={canCost} />
+        <div className="mt-5 border-t border-[var(--color-border)] pt-5">
+          <SizeChartField form={form} setForm={setForm} errors={errors} sizeCharts={sizeCharts} />
+        </div>
+      </Section>
 
-      <Collapsible title="Media" open={openSections.media} onToggle={() => toggleSection('media')}>
-        <MediaFields form={form} setForm={setForm} mediaLibrary={media.data} uploadMedia={uploadMedia} serverErrors={serverErrors} clearError={() => setServerErrors({})} />
-      </Collapsible>
+      <Section id="media" title="Images" description="Order, primary image, alt text and per-variant images." open={open.media} onToggle={() => toggle('media')} errorCount={sectionErrors('media')}>
+        <MediaSection form={form} setForm={setForm} errors={errors} status={form.status} />
+      </Section>
 
-      <Collapsible title="Advanced settings" open={openSections.advanced} onToggle={() => toggleSection('advanced')}>
-        <AdvancedFields form={form} setForm={setForm} collections={collections.data} serverErrors={serverErrors} clearError={() => setServerErrors({})} />
-      </Collapsible>
+      <Section id="fashion" title="Fit and fashion details" description="Size confidence shown to shoppers." open={open.fashion} onToggle={() => toggle('fashion')} errorCount={sectionErrors('fashion')}>
+        <FashionFields form={form} setForm={setForm} errors={errors} />
+      </Section>
 
-      {save.error || publication.error ? <Alert tone="error">{apiMessage(save.error || publication.error)}</Alert> : null}
-      {isDirty ? <p className="text-right text-xs font-semibold text-[var(--color-warning)]">You have unsaved changes.</p> : null}
-      {save.isSuccess ? <Alert tone="success">Product changes saved.</Alert> : null}
-      <div className="flex justify-end"><Button loading={save.isPending} onClick={() => save.mutate()}><Save size={16} /> Save product</Button></div>
+      <Section id="relations" title="Related products" description="You may also like, and complete the look." open={open.relations} onToggle={() => toggle('relations')} errorCount={sectionErrors('relations')}>
+        {isNew ? <p className="text-sm text-[var(--color-muted)]">Create the product first. Related products can be linked right after.</p> : <RelationFields form={form} setForm={setForm} productId={id} />}
+      </Section>
+
+      <Section id="advanced" title="Advanced settings" description="Visibility, extra categories, collections, shipping and attributes." open={open.advanced} onToggle={() => toggle('advanced')} errorCount={sectionErrors('advanced')}>
+        <AdvancedFields form={form} setForm={setForm} errors={errors} categoryOptions={categoryOptions} collectionOptions={taxonomyOptions(collections.data, form.collectionIds)} />
+      </Section>
+
+      <div className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-[var(--shadow-md)]">
+        <p className={`text-xs font-semibold ${isDirty ? 'text-[var(--color-warning)]' : 'text-[var(--color-muted)]'}`} role="status">
+          {isDirty ? 'You have unsaved changes.' : isNew ? 'Nothing entered yet.' : 'All changes saved.'}
+          {blockers.length && form.status !== 'published' ? <span className="ml-2 font-normal text-[var(--color-muted)]">{blockers.length} thing{blockers.length === 1 ? '' : 's'} to fix before publishing.</span> : null}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isNew && canPublish && form.status !== 'published' ? <Button variant="secondary" loading={publication.isPending} disabled={busy || Boolean(conflict)} onClick={() => runPublish()}>{isDirty ? 'Save & publish' : 'Publish'}</Button> : null}
+          <Button loading={save.isPending} disabled={busy || Boolean(conflict) || (!isNew && !isDirty)} onClick={() => runSave()}>{isNew ? 'Create product' : 'Save changes'}</Button>
+        </div>
+      </div>
     </div>
   );
 });
 
-function Collapsible({ title, description, open, onToggle, children }) {
+function Section({ id, title, description, open, onToggle, errorCount, children }) {
   return (
-    <details open={open} className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold" onClick={(e) => { e.preventDefault(); onToggle(); }}>
-        <span>{title}</span>
-        <span className="text-[var(--color-muted)]">{open ? 'Hide' : 'Show'}</span>
+    <details id={`section-${id}`} open={open} tabIndex={-1} className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4" onClick={(event) => { event.preventDefault(); onToggle(); }}>
+        <span>
+          <span className="flex items-center gap-2 text-sm font-semibold">{title}{errorCount ? <Badge tone="danger">{errorCount} to fix</Badge> : null}</span>
+          {description ? <span className="mt-0.5 block text-xs font-normal text-[var(--color-muted)]">{description}</span> : null}
+        </span>
+        <span className="shrink-0 text-xs font-semibold text-[var(--color-muted)]">{open ? 'Hide' : 'Show'}</span>
       </summary>
       {open ? <div className="border-t border-[var(--color-border)] px-5 py-5">{children}</div> : null}
     </details>
   );
 }
 
-function BasicFields({ form, setForm, categories, brands, serverErrors, clearError }) {
-  const update = (key, value) => { setForm({ ...form, [key]: value }); clearError(); };
-  const onNameChange = (locale, value) => {
-    const nextTranslations = { ...form.translations, [locale]: { ...form.translations[locale], name: value } };
-    setForm({ ...form, translations: nextTranslations, ...(locale === 'en' && !form.slug && slugify(value) ? { slug: slugify(value) } : {}) });
-    clearError();
-  };
-  const error = (path) => serverErrors[path]?.[0];
-
-  return (
-    <Card id="general" className="scroll-mt-32">
-      <CardHeader title="Product information" description="The essentials you need to add a product." />
-      <CardBody>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Product name (English)" required error={error('translations.en.name')}>
-            <Input value={form.translations.en.name || ''} onChange={(event) => onNameChange('en', event.target.value)} placeholder="e.g., Classic Cotton Shirt" />
-          </Field>
-          <Field label="Product name (Bangla)" required error={error('translations.bn.name')}>
-            <Input value={form.translations.bn.name || ''} onChange={(event) => onNameChange('bn', event.target.value)} placeholder="আপনার পণ্যের নাম লিখুন" />
-          </Field>
-          <Field label="Slug" error={error('slug')}><Input value={form.slug || ''} onChange={(event) => update('slug', event.target.value)} placeholder="auto-generated from name" /></Field>
-          <Field label="Product type" error={error('type')}>
-            <NativeSelect value={form.type} onChange={(event) => update('type', event.target.value)} options={[{ value: 'simple', label: 'Simple (single variant)' }, { value: 'variable', label: 'Variable (multiple variants)' }]} />
-          </Field>
-          <Field label="Primary category" required error={error('categoryId')}>
-            <NativeSelect value={form.categoryId} onChange={(event) => update('categoryId', event.target.value)} options={[{ value: '', label: 'Select category…' }, ...(categories || []).map((item) => ({ value: item.id, label: item.translations?.en?.name || item.slug }))]} />
-          </Field>
-          <Field label="Brand" error={error('brandId')}>
-            <NativeSelect value={form.brandId} onChange={(event) => update('brandId', event.target.value)} options={[{ value: '', label: 'No brand' }, ...(brands || []).map((item) => ({ value: item.id, label: item.translations?.en?.name || item.slug }))]} />
-          </Field>
-          <Field label="Status" error={error('status')}>
-            <NativeSelect value={form.status} onChange={(event) => update('status', event.target.value)} options={[{ value: 'draft', label: 'Draft — not visible on storefront' }, { value: 'scheduled', label: 'Scheduled — publish at a future date' }, { value: 'published', label: 'Published — visible immediately' }]} />
-          </Field>
-          <label className="flex items-center gap-2 self-end pb-3 text-sm font-semibold">
-            <Checkbox checked={form.featured} onCheckedChange={(value) => update('featured', !!value)} />
-            Featured product
-          </label>
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
-
-function TranslationFields({ form, setForm, serverErrors, clearError }) {
-  const update = (locale, key, value) => { setForm({ ...form, translations: { ...form.translations, [locale]: { ...form.translations[locale], [key]: value } } }); clearError(); };
-  const error = (locale, key) => serverErrors[`translations.${locale}.${key}`]?.[0];
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      {['en', 'bn'].map((locale) => (
-        <fieldset key={locale} className="grid gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] p-4">
-          <legend className="px-2 font-bold">{locale === 'en' ? 'English' : 'বাংলা'}</legend>
-          <Field label="Short description" error={error(locale, 'shortDescription')}>
-            <Textarea rows={3} value={form.translations[locale].shortDescription || ''} onChange={(event) => update(locale, 'shortDescription', event.target.value)} placeholder="Brief description shown in listings" />
-          </Field>
-          <Field label="Description" error={error(locale, 'description')}>
-            <Textarea rows={4} value={form.translations[locale].description || ''} onChange={(event) => update(locale, 'description', event.target.value)} placeholder="Detailed description" />
-          </Field>
-          <Field label="Care instructions" error={error(locale, 'careText')}>
-            <Textarea rows={3} value={form.translations[locale].careText || ''} onChange={(event) => update(locale, 'careText', event.target.value)} placeholder="Care and maintenance instructions" />
-          </Field>
-          <Field label="Materials" error={error(locale, 'materialText')}>
-            <Textarea rows={2} value={form.translations[locale].materialText || ''} onChange={(event) => update(locale, 'materialText', event.target.value)} placeholder="Materials and composition" />
-          </Field>
-          <Field label="SEO title" error={error(locale, 'seoTitle')}>
-            <Input value={form.translations[locale].seoTitle || ''} onChange={(event) => update(locale, 'seoTitle', event.target.value)} placeholder="Search engine title" />
-          </Field>
-          <Field label="SEO description" error={error(locale, 'seoDescription')}>
-            <Input value={form.translations[locale].seoDescription || ''} onChange={(event) => update(locale, 'seoDescription', event.target.value)} placeholder="Search engine description" />
-          </Field>
-        </fieldset>
-      ))}
-    </div>
-  );
-}
-
-function VariantFields({ form, setForm, isNew, serverErrors, clearError }) {
-  const update = (index, key, value) => { setForm({ ...form, variants: form.variants.map((variant, position) => (position === index ? { ...variant, [key]: value } : key === 'isDefault' && value ? { ...variant, isDefault: false } : variant)) }); clearError(); };
-  const remove = (index) => { setForm({ ...form, variants: form.variants.filter((_, position) => position !== index) }); clearError(); };
-  const error = (key) => serverErrors[`variants.0.${key}`]?.[0];
-
+function BasicFields({ form, setForm, errors, categoryOptions, brands, slugTouched, setSlugTouched, isNew, blockers, onFix, canPublish, initialStatus }) {
+  const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const onNameChange = (locale, value) => setForm((current) => ({
+    ...current,
+    translations: { ...current.translations, [locale]: { ...current.translations[locale], name: value } },
+    // The slug follows the English name until the user edits it. Existing products never auto-change (it creates a redirect).
+    ...(locale === 'en' && !slugTouched ? { slug: slugify(value) } : {}),
+  }));
+  const published = form.status === 'published' || form.status === 'scheduled';
   return (
     <div className="grid gap-4">
-      {form.variants.map((variant, index) => (
-        <fieldset key={variant.id || variant.clientKey} className="grid gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] p-4 md:grid-cols-4">
-          <legend className="px-2 font-bold">{variant.sku || `Variant ${index + 1}`}</legend>
-          <Field label="SKU" required error={error('sku')}>
-            <Input value={variant.sku || ''} onChange={(event) => update(index, 'sku', event.target.value)} placeholder="e.g., TSHIRT-BLK-S" />
-          </Field>
-          <Field label="Title" required error={error('title')}>
-            <Input value={variant.title || ''} onChange={(event) => update(index, 'title', event.target.value)} />
-          </Field>
-          <Field label="Regular price (BDT)" required error={error('regularPrice')}>
-            <Input value={variant.regularPrice || ''} inputMode="decimal" onChange={(event) => update(index, 'regularPrice', event.target.value)} placeholder="0.00" />
-          </Field>
-          <Field label="Sale price (BDT)" error={error('salePrice')}>
-            <Input value={variant.salePrice || ''} inputMode="decimal" onChange={(event) => update(index, 'salePrice', event.target.value)} placeholder="Optional" />
-          </Field>
-          <Field label="Cost price (BDT)" error={error('costPrice')}>
-            <Input value={variant.costPrice || ''} inputMode="decimal" onChange={(event) => update(index, 'costPrice', event.target.value)} placeholder="Optional" />
-          </Field>
-          {variant.stockPolicy !== 'available' ? (
-            <Field label="Stock quantity" error={error('initialStock')}>
-              <Input type="number" min="0" value={variant.initialStock ?? 0} onChange={(event) => update(index, 'initialStock', Number(event.target.value))} />
-            </Field>
-          ) : null}
-          <Field label="Stock policy" error={error('stockPolicy')}>
-            <NativeSelect value={variant.stockPolicy} onChange={(event) => update(index, 'stockPolicy', event.target.value)} options={[{ value: 'deny', label: 'Deny' }, { value: 'allow_backorder', label: 'Allow backorder' }, { value: 'preorder', label: 'Preorder' }, { value: 'available', label: 'Available' }]} />
-          </Field>
-          <Field label="Low stock threshold" error={error('lowStockThreshold')}>
-            <Input type="number" min="0" value={variant.lowStockThreshold ?? 0} onChange={(event) => update(index, 'lowStockThreshold', Number(event.target.value))} />
-          </Field>
-          <label className="flex items-center gap-2 self-end pb-3 text-sm font-semibold">
-            <Checkbox checked={variant.isDefault} onCheckedChange={(value) => update(index, 'isDefault', !!value)} />
-            Default variant
-          </label>
-          {form.variants.length > 1 ? <Button variant="outline" onClick={() => remove(index)}>Archive on save</Button> : null}
-        </fieldset>
-      ))}
-      {form.type === 'variable' ? <Button variant="outline" onClick={() => { setForm({ ...form, variants: [...form.variants, newVariant()] }); clearError(); }}>Add variant</Button> : null}
-    </div>
-  );
-}
-
-function MediaFields({ form, setForm, mediaLibrary, uploadMedia, serverErrors, clearError }) {
-  const add = (asset = null) => { setForm({ ...form, media: [...form.media, { mediaId: asset?.id || '', role: form.media.length ? 'gallery' : 'primary', displayOrder: form.media.length, altEn: '', altBn: '', variantKey: null, previewUrl: asset?.url || null }] }); clearError(); };
-  const update = (index, key, value) => { setForm({ ...form, media: form.media.map((item, position) => (position === index ? { ...item, [key]: value } : item)) }); clearError(); };
-
-  const [mediaModalOpen, setMediaModalOpen] = useState(false);
-  const [selectedMedia, setSelectedMedia] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const filteredMedia = mediaLibrary?.filter(item => 
-    item.originalName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.altText?.toLowerCase().includes(searchTerm.toLowerCase()))
-  ) || [];
-
-  const handleMediaSelect = (mediaItem) => {
-    const isSelected = selectedMedia.some(item => item.id === mediaItem.id);
-    if (isSelected) {
-      setSelectedMedia(selectedMedia.filter(item => item.id !== mediaItem.id));
-    } else {
-      setSelectedMedia([...selectedMedia, mediaItem]);
-    }
-  };
-
-  const attachSelectedMedia = () => {
-    setForm((prev) => {
-      const newMediaItems = selectedMedia.map((item, index) => ({
-        mediaId: item.id || '',
-        role: prev.media.length === 0 && selectedMedia.length === 1 && index === 0 ? 'primary' : 'gallery',
-        displayOrder: prev.media.length + index,
-        altEn: item.altText || '',
-        altBn: item.altText || '',
-        variantKey: null,
-        previewUrl: item.url || null,
-      }));
-      return { ...prev, media: [...prev.media, ...newMediaItems] };
-    });
-    setSelectedMedia([]);
-    setMediaModalOpen(false);
-    setSearchTerm('');
-    clearError();
-  };
-
-  const modalFooter = (
-    <>
-      <Button variant="outline" onClick={() => { setMediaModalOpen(false); clearError(); }}>Cancel</Button>
-      <Button variant="primary" onClick={attachSelectedMedia} disabled={selectedMedia.length === 0}>
-        Attach Selected ({selectedMedia.length})
-      </Button>
-    </>
-  );
-
-  const error = (key) => serverErrors[`media.0.${key}`]?.[0];
-
-  return (
-    <div className="grid gap-5">
-      <div className="mb-2">
-        <Field label="Upload new images">
-          <ImageUpload
-            multiple={true}
-            label=""
-            hint="Supports JPEG, PNG, WebP, AVIF formats. Max 10MB per image."
-            onUpload={async (file) => {
-              const data = new FormData();
-              data.append('file', file);
-              data.append('privacy', 'public');
-              return uploadMedia.mutateAsync(data);
-            }}
-            uploading={uploadMedia.isPending}
-            onChange={(images) => {
-              if (images.length > 0) {
-                setForm((prev) => {
-                  const newMedia = images.map((image, index) => ({
-                    mediaId: image.id || '',
-                    role: prev.media.length === 0 && index === 0 ? 'primary' : 'gallery',
-                    displayOrder: prev.media.length + index,
-                    altEn: '',
-                    altBn: '',
-                    previewUrl: image.url || null,
-                  }));
-                  return { ...prev, media: [...prev.media, ...newMedia] };
-                });
-                clearError();
-              }
-            }}
-          />
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Product name (English)" required htmlFor={fieldId('translations.en.name')} error={errors['translations.en.name']}>
+          <Input value={form.translations.en.name} onChange={(event) => onNameChange('en', event.target.value)} placeholder="e.g. Classic Cotton Shirt" />
         </Field>
+        <Field label="Product name (Bangla)" required htmlFor={fieldId('translations.bn.name')} error={errors['translations.bn.name']}>
+          <Input value={form.translations.bn.name} onChange={(event) => onNameChange('bn', event.target.value)} placeholder="আপনার পণ্যের নাম লিখুন" lang="bn" />
+        </Field>
+        <Field label="Slug" htmlFor={fieldId('slug')} error={errors.slug} hint={form.slug ? `Storefront address: /product/${form.slug}${isNew ? '' : '. Changing it adds a redirect from the old address.'}` : 'Generated from the English name.'}>
+          <Input value={form.slug} onChange={(event) => { setSlugTouched(true); update('slug', event.target.value.toLowerCase()); }} placeholder="auto-generated from name" />
+        </Field>
+        <Field label="Product type" htmlFor={fieldId('type')} error={errors.type} hint={form.type === 'variable' ? 'Variable products have options such as size and colour.' : 'Simple products have one price and one stock count.'}>
+          <NativeSelect value={form.type} onChange={(event) => update('type', event.target.value)} options={[{ value: 'simple', label: 'Simple (single variant)' }, { value: 'variable', label: 'Variable (multiple variants)' }]} />
+        </Field>
+        <Field label="Primary category" required={published} htmlFor={fieldId('categoryId')} error={errors.categoryId}>
+          <Combobox value={form.categoryId || null} onChange={(value) => update('categoryId', value || '')} options={categoryOptions} placeholder="Select category…" searchPlaceholder="Search categories" />
+        </Field>
+        <Field label="Brand" htmlFor={fieldId('brandId')} error={errors.brandId}>
+          <Combobox value={form.brandId || null} onChange={(value) => update('brandId', value || '')} options={brands} placeholder="No brand" searchPlaceholder="Search brands" />
+        </Field>
+        <Field label="Status" htmlFor={fieldId('status')} error={errors.status}>
+          <NativeSelect value={form.status} onChange={(event) => update('status', event.target.value)} options={STATUS_OPTIONS.map((option) => ({ ...option, disabled: !canPublish && option.value !== initialStatus }))} />
+        </Field>
+        {form.status === 'scheduled' ? (
+          <Field label="Go live at" required htmlFor={fieldId('publishAt')} error={errors.publishAt} hint="Your local time.">
+            <Input type="datetime-local" value={form.publishAt} onChange={(event) => update('publishAt', event.target.value)} />
+          </Field>
+        ) : null}
+        <label className="flex items-center gap-2 self-end pb-3 text-sm font-semibold">
+          <Checkbox checked={form.featured} onCheckedChange={(value) => update('featured', Boolean(value))} />
+          Featured product
+        </label>
       </div>
-
-      {form.media.length ? (
-        <div className="grid gap-4">
-          {form.media.map((item, index) => (
-            <div key={`${item.mediaId}-${index}`} className="grid gap-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 md:grid-cols-[140px_1fr_auto] md:items-start">
-              <div className="relative aspect-square overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
-                {item.previewUrl ? (
-                  <img src={item.previewUrl} alt={item.altEn || 'Media preview'} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-xs text-[var(--color-muted)]">No image</div>
-                )}
-              </div>
-              <div className="grid gap-4">
-                <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[.72rem] font-semibold uppercase tracking-wider ${item.role === 'primary' ? 'bg-[var(--color-primary-soft)] text-[var(--color-primary-strong)]' : 'bg-[var(--color-surface-muted)] text-[var(--color-muted)]'}`}>
-                    {item.role}
-                  </span>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Field label="English alt" error={error('altEn')}>
-                    <Input value={item.altEn || ''} onChange={(event) => update(index, 'altEn', event.target.value)} placeholder="Alt text" />
-                  </Field>
-                  <Field label="Bangla alt" error={error('altBn')}>
-                    <Input value={item.altBn || ''} onChange={(event) => update(index, 'altBn', event.target.value)} placeholder="Alt text" />
-                  </Field>
-                </div>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => { setForm({ ...form, media: form.media.filter((_, position) => position !== index) }); clearError(); }} className="self-start">Remove</Button>
-            </div>
-          ))}
+      {form.status === 'draft' && blockers.length ? (
+        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-muted)] p-3 text-xs">
+          <p className="font-semibold">Before this can be published</p>
+          <ul className="mt-1 grid gap-0.5">{blockers.map((blocker) => <li key={blocker.id} className="flex flex-wrap items-center gap-1.5 text-[var(--color-muted)]"><Circle size={10} aria-hidden="true" />{blocker.message}<button type="button" className="font-semibold text-[var(--color-primary)] underline underline-offset-2" onClick={() => onFix(blocker.path)}>Fix</button></li>)}</ul>
         </div>
-      ) : (
-        <div className="grid min-h-40 place-items-center rounded-xl border border-dashed border-[var(--color-border)] text-center">
-          <div>
-            <p className="text-sm font-semibold">No images attached</p>
-            <p className="mt-1 text-xs text-[var(--color-muted)]">Upload images directly or use the media library below.</p>
-          </div>
-        </div>
-      )}
-      
-      <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => { setMediaModalOpen(true); clearError(); }}>
-          Browse Media Library
-        </Button>
-      </div>
-
-      <DialogRoot open={mediaModalOpen} onOpenChange={setMediaModalOpen}>
-        <DialogTrigger asChild>
-          <div className="hidden" />
-        </DialogTrigger>
-        <DialogContent title="Media Library" description="Select media assets to attach to this product" size="lg" footer={modalFooter}>
-          <div className="space-y-4">
-            <Field label="Search media">
-              <Input
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); clearError(); }}
-                placeholder="Search by filename or alt text..."
-              />
-            </Field>
-            
-            <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 max-h-[60vh] overflow-y-auto">
-              {filteredMedia.length > 0 ? (
-                filteredMedia.map((item) => {
-                  const isSelected = selectedMedia.some(selItem => selItem.id === item.id);
-                  return (
-                    <label key={item.id} className={`relative group aspect-square overflow-hidden rounded-lg border cursor-pointer transition-all ${isSelected ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary-soft)]' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]'}`}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => { handleMediaSelect(item); clearError(); }}
-                        className="sr-only"
-                      />
-                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--color-surface)]/50 opacity-0 group-hover:bg-[var(--color-primary)]/20 group-hover:opacity-100 transition-opacity pointer-events-none">
-                        {isSelected ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[var(--color-muted)]" viewBox="0 0 20 20" fill="none" stroke="currentColor">
-                            <circle cx="10" cy="10" r="9" strokeWidth="2" />
-                          </svg>
-                        )}
-                      </div>
-                      {item.url ? (
-                        <img 
-                          src={item.url} 
-                          alt="" 
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center bg-[var(--color-surface-muted)] text-[var(--color-muted)] text-xs">
-                          No preview
-                        </div>
-                      )}
-                      <div className="absolute bottom-0 left-0 right-0 p-2 text-xs text-[var(--color-muted)] bg-[var(--color-surface)]/80 backdrop-blur truncate">
-                        {item.originalName || 'Unnamed'}
-                      </div>
-                    </label>
-                  );
-                })
-              ) : (
-                <div className="col-span-full text-center py-8">
-                  {searchTerm ? (
-                    <p>No media found matching &quot;{searchTerm}&quot;</p>
-                  ) : (
-                    <p>No media items found in library</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </DialogRoot>
+      ) : null}
     </div>
   );
 }
 
-function AdvancedFields({ form, setForm, collections, serverErrors, clearError }) {
-  const update = (key, value) => { setForm({ ...form, [key]: value }); clearError(); };
+const countHint = (value, max, recommended) => `${(value || '').length}/${max}${recommended ? `, about ${recommended} works best` : ''}`;
+
+function TranslationFields({ form, setForm, errors }) {
+  const update = (locale, key, value) => setForm((current) => ({ ...current, translations: { ...current.translations, [locale]: { ...current.translations[locale], [key]: value } } }));
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      {['en', 'bn'].map((locale) => {
+        const t = form.translations[locale];
+        const at = (key) => `translations.${locale}.${key}`;
+        const bn = locale === 'bn';
+        return (
+          <fieldset key={locale} className="grid gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] p-4" lang={locale}>
+            <legend className="px-2 font-bold">{bn ? 'বাংলা (Bangla)' : 'English'}</legend>
+            <Field label="Short description" htmlFor={fieldId(at('shortDescription'))} error={errors[at('shortDescription')]} hint={countHint(t.shortDescription, 2000)}>
+              <Textarea rows={3} value={t.shortDescription} onChange={(event) => update(locale, 'shortDescription', event.target.value)} placeholder={bn ? 'তালিকায় দেখানো সংক্ষিপ্ত বিবরণ' : 'Brief description shown in listings'} />
+            </Field>
+            <Field label="Description" htmlFor={fieldId(at('description'))} error={errors[at('description')]}>
+              <Textarea rows={5} value={t.description} onChange={(event) => update(locale, 'description', event.target.value)} />
+            </Field>
+            <Field label="Care instructions" htmlFor={fieldId(at('careText'))} error={errors[at('careText')]}>
+              <Textarea rows={3} value={t.careText} onChange={(event) => update(locale, 'careText', event.target.value)} />
+            </Field>
+            <Field label="Materials and composition" htmlFor={fieldId(at('materialText'))} error={errors[at('materialText')]} hint="For example: 100% cotton, 180 GSM.">
+              <Textarea rows={2} value={t.materialText} onChange={(event) => update(locale, 'materialText', event.target.value)} />
+            </Field>
+            <Field label="SEO title" htmlFor={fieldId(at('seoTitle'))} error={errors[at('seoTitle')]} hint={countHint(t.seoTitle, 255, 60)}>
+              <Input value={t.seoTitle} onChange={(event) => update(locale, 'seoTitle', event.target.value)} placeholder="Defaults to the product name" />
+            </Field>
+            <Field label="SEO description" htmlFor={fieldId(at('seoDescription'))} error={errors[at('seoDescription')]} hint={countHint(t.seoDescription, 500, 160)}>
+              <Textarea rows={2} value={t.seoDescription} onChange={(event) => update(locale, 'seoDescription', event.target.value)} placeholder="Shown in search results" />
+            </Field>
+          </fieldset>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Size confidence fields shown on the storefront (BR-CAT-002). */
+function FashionFields({ form, setForm, errors }) {
+  const fashion = form.fashion || {};
+  const update = (key, value) => setForm((current) => ({ ...current, fashion: { ...(current.fashion || {}), [key]: value } }));
+  const text = (key, locale) => fashion[key]?.[locale] || '';
+  const updateText = (key, locale, value) => setForm((current) => ({ ...current, fashion: { ...(current.fashion || {}), [key]: { en: current.fashion?.[key]?.en || '', bn: current.fashion?.[key]?.bn || '', [locale]: value } } }));
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Field label="Fit type" htmlFor={fieldId('fashion.fitType')}><NativeSelect value={fashion.fitType || ''} onChange={(event) => update('fitType', event.target.value || null)} options={[{ value: '', label: 'Not specified' }, { value: 'regular', label: 'Regular fit' }, { value: 'slim', label: 'Slim fit' }, { value: 'loose', label: 'Relaxed / loose' }, { value: 'oversized', label: 'Oversized' }]} /></Field>
+        <Field label="Sizing advice" htmlFor={fieldId('fashion.fitNote')}><NativeSelect value={fashion.fitNote || ''} onChange={(event) => update('fitNote', event.target.value || null)} options={[{ value: '', label: 'Not specified' }, { value: 'runs_small', label: 'Runs small' }, { value: 'true_to_size', label: 'True to size' }, { value: 'runs_large', label: 'Runs large' }]} /></Field>
+        <Field label="Stitching" htmlFor={fieldId('fashion.stitched')}><NativeSelect value={fashion.stitched == null ? '' : fashion.stitched ? 'yes' : 'no'} onChange={(event) => update('stitched', event.target.value === '' ? null : event.target.value === 'yes')} options={[{ value: '', label: 'Not specified' }, { value: 'yes', label: 'Stitched (ready to wear)' }, { value: 'no', label: 'Unstitched' }]} /></Field>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Model height (cm)" htmlFor={fieldId('fashion.modelHeightCm')} error={errors['fashion.modelHeightCm']}><Input inputMode="numeric" value={fashion.modelHeightCm ?? ''} onChange={(event) => { const digits = event.target.value.replace(/\D/g, ''); update('modelHeightCm', digits ? Number(digits) : null); }} placeholder="165" /></Field>
+        <Field label="Size the model wears" htmlFor={fieldId('fashion.modelSize')}><Input value={fashion.modelSize || ''} maxLength={20} onChange={(event) => update('modelSize', event.target.value || null)} placeholder="M" /></Field>
+      </div>
+      {[['pieces', 'What is in the set', 'Kameez, salwar, orna'], ['occasion', 'Occasion', 'Eid, party, everyday'], ['origin', 'Made in', 'Bangladesh']].map(([key, label, placeholder]) => (
+        <div key={key} className="grid gap-4 md:grid-cols-2">
+          <Field label={`${label} (English)`} htmlFor={fieldId(`fashion.${key}.en`)}><Input value={text(key, 'en')} maxLength={300} onChange={(event) => updateText(key, 'en', event.target.value)} placeholder={placeholder} /></Field>
+          <Field label={`${label} (Bangla)`} htmlFor={fieldId(`fashion.${key}.bn`)}><Input value={text(key, 'bn')} maxLength={300} lang="bn" onChange={(event) => updateText(key, 'bn', event.target.value)} /></Field>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Size chart picker. Lives with the variants because a product with a size option cannot be published without one. */
+function SizeChartField({ form, setForm, errors, sizeCharts }) {
+  const hasSizeOption = form.attributes.some((item) => item.variation && String(item.key || '').toLowerCase() === 'size');
+  const chosen = sizeCharts?.data ? taxonomyOptions(sizeCharts.data.filter((chart) => !chart.archivedAt).map((chart) => ({ id: chart.id, slug: chart.name || chart.slug, translations: { en: { name: chart.name || chart.translations?.en?.name } } })), form.sizeChartIds) : [];
+  return (
+    <Field label="Size charts" required={hasSizeOption} htmlFor={fieldId('sizeChartIds')} error={errors.sizeChartIds} hint={hasSizeOption ? 'Required to publish: this product has a size option. Shoppers see the chart next to the size picker.' : 'Shoppers see the chart next to the size picker. Required to publish a product with a size option.'}>
+      {sizeCharts?.data ? (
+        <MultiSelect value={form.sizeChartIds} onChange={(value) => setForm((current) => ({ ...current, sizeChartIds: value }))} options={chosen} placeholder="None" max={10} />
+      ) : (
+        <p id={fieldId('sizeChartIds')} tabIndex={-1} className="min-h-11 py-2.5 text-sm text-[var(--color-muted)]">{form.sizeCharts?.length ? form.sizeCharts.map((chart) => chart.name).join(', ') : 'None assigned'}{sizeCharts?.isLoading ? '' : ' (managed elsewhere)'}</p>
+      )}
+      {sizeCharts?.data && !sizeCharts.data.some((chart) => !chart.archivedAt) ? <p className="mt-2 text-sm text-[var(--color-muted)]">No size charts yet. <a href="/admin/size-charts/new" target="_blank" rel="noopener noreferrer" className="font-semibold text-[var(--color-primary)] underline">Create a size chart</a> (opens in a new tab), then reopen this list.</p> : null}
+    </Field>
+  );
+}
+
+/** Curated "you may also like" and "complete the look" links (BR-CAT-001). */
+function RelationFields({ form, setForm, productId }) {
+  const groups = [
+    { key: 'related', label: 'You may also like', hint: 'Similar styles. When empty, the storefront shows products from the same category.' },
+    { key: 'cross_sell', label: 'Complete the look', hint: 'Items that go with this product, also suggested in the cart drawer.' },
+  ];
+  const setGroup = (key, items) => setForm((current) => ({ ...current, relations: { ...current.relations, [key]: items } }));
+  return (
+    <div className="grid gap-6">
+      {groups.map((group) => (
+        <ProductPicker key={group.key} name={group.key} label={group.label} hint={group.hint} value={form.relations[group.key]} exclude={productId} onChange={(items) => setGroup(group.key, items)} />
+      ))}
+    </div>
+  );
+}
+
+function ProductPicker({ name, label, hint, value, exclude, onChange }) {
+  const [search, setSearch] = useState('');
+  const [term, setTerm] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setTerm(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const results = useQuery({
+    queryKey: ['admin-product-picker', term],
+    enabled: term.length >= 2,
+    queryFn: () => browserApi.get('/admin/products', { params: { search: term, pageSize: 8 } }).then((response) => response.data.data),
+  });
+  const chosen = new Set(value.map((item) => item.id));
+  const options = (results.data || []).filter((item) => item.id !== exclude && !chosen.has(item.id) && !item.archivedAt);
+  const full = value.length >= MAX_RELATED;
+  return (
+    <div className="grid gap-3">
+      <div>
+        <h3 className="text-sm font-semibold">{label}</h3>
+        <p className="text-xs text-[var(--color-muted)]">{hint}</p>
+      </div>
+      {value.length ? (
+        <ul className="flex flex-wrap gap-2">
+          {value.map((item) => (
+            <li key={item.id} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] py-1 pl-3 pr-1 text-xs font-semibold">
+              {item.name}
+              {item.status && item.status !== 'published' ? <Badge>{item.status}</Badge> : null}
+              <button type="button" className="rounded-full p-1.5 hover:bg-[var(--color-primary-soft)]" aria-label={`Remove ${item.name} from ${label}`} onClick={() => onChange(value.filter((entry) => entry.id !== item.id))}><X size={13} /></button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-xs text-[var(--color-muted)]">No products linked yet.</p>}
+      <Field label="Add a product" htmlFor={fieldId(`relations.${name}`)} hint={full ? `Up to ${MAX_RELATED} products can be linked.` : 'Type at least 2 letters of the name or SKU.'}>
+        <Input value={search} disabled={full} onChange={(event) => setSearch(event.target.value)} placeholder="Search by product name" />
+      </Field>
+      {term.length >= 2 && !full ? (
+        <ul className="grid gap-1 rounded-xl border border-[var(--color-border)] p-1" aria-live="polite">
+          {results.isLoading ? <li className="px-3 py-2 text-xs text-[var(--color-muted)]">Searching…</li> : null}
+          {results.error ? <li className="px-3 py-2 text-xs text-[var(--color-danger)]">Search failed.</li> : null}
+          {!results.isLoading && !results.error && !options.length ? <li className="px-3 py-2 text-xs text-[var(--color-muted)]">No matching products.</li> : null}
+          {options.map((item) => (
+            <li key={item.id}>
+              <button type="button" className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--color-primary-soft)]" onClick={() => { onChange([...value, { id: item.id, slug: item.slug, name: item.name, status: item.status }]); setSearch(''); }}>
+                <span className="truncate">{item.name}</span>
+                <span className="shrink-0 text-xs text-[var(--color-muted)]">{item.status}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function AdvancedFields({ form, setForm, errors, categoryOptions, collectionOptions }) {
+  const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const shipping = form.shippingProfile || {};
+  const setShipping = (patch) => setForm((current) => ({ ...current, shippingProfile: { ...current.shippingProfile, ...patch } }));
+  const usedForVariants = new Set(form.attributes.filter((item) => item.variation).map((item) => item.attributeId));
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Visibility" error={serverErrors?.visibility}>
-        <NativeSelect value={form.visibility} onChange={(event) => update('visibility', event.target.value)} options={['catalog_search', 'catalog', 'search', 'hidden'].map((value) => ({ value, label: value }))} />
+      <Field label="Visibility" htmlFor={fieldId('visibility')} error={errors.visibility}>
+        <NativeSelect value={form.visibility} onChange={(event) => update('visibility', event.target.value)} options={VISIBILITY} />
       </Field>
-      <Field label="Tax class" error={serverErrors?.taxClass}>
-        <Input value={form.taxClass || ''} onChange={(event) => update('taxClass', event.target.value)} placeholder="standard" />
+      <Field label="Tax class" htmlFor={fieldId('taxClass')} error={errors.taxClass}>
+        <Input value={form.taxClass} maxLength={80} onChange={(event) => update('taxClass', event.target.value)} placeholder="standard" />
       </Field>
-      <Field label="Collection IDs (comma separated)" error={serverErrors?.collectionIds}>
-        <Input value={form.collectionIds.join(', ')} onChange={(event) => update('collectionIds', splitCsv(event.target.value))} placeholder="e.g., 123, 456" />
+      <Field label="Additional categories" htmlFor={fieldId('categoryIds')} error={errors.categoryIds} hint="The product also appears in these categories.">
+        <MultiSelect value={form.categoryIds} onChange={(value) => update('categoryIds', value)} options={categoryOptions.filter((option) => option.value !== form.categoryId)} placeholder="None" max={50} />
       </Field>
-      <Field label="Additional category IDs (comma separated)" error={serverErrors?.categoryIds}>
-        <Input value={form.categoryIds.join(', ')} onChange={(event) => update('categoryIds', splitCsv(event.target.value))} placeholder="e.g., 123, 456" />
+      <Field label="Collections" htmlFor={fieldId('collectionIds')} error={errors.collectionIds}>
+        <MultiSelect value={form.collectionIds} onChange={(value) => update('collectionIds', value)} options={collectionOptions} placeholder="None" max={50} />
       </Field>
-      <Field label="Attributes (key:value, comma separated)" error={serverErrors?.attributes}>
-        <Input value={form.attributes.map((item) => `${item.attributeId || ''}:${item.variation ? 'variation' : 'visible'}`).join(', ')} onChange={(event) => update('attributes', splitCsv(event.target.value).map((part) => { const [id, flag] = part.split(':'); return { attributeId: id, variation: flag === 'variation' }; }))} placeholder="e.g., 123:variation, 456:visible" />
+      <Field label="Low stock alert (all variants)" htmlFor={fieldId('lowStockThreshold')} error={errors.lowStockThreshold} hint="Blank uses the store default. A variant can override this.">
+        <Input inputMode="numeric" value={form.lowStockThreshold} onChange={(event) => update('lowStockThreshold', event.target.value)} placeholder="Store default" />
       </Field>
-      <Field label="Publish at" error={serverErrors?.publishAt}>
-        <Input type="datetime-local" value={form.publishAt || ''} onChange={(event) => update('publishAt', event.target.value)} />
-      </Field>
+      <fieldset className="grid gap-2 md:col-span-2">
+        <legend className="text-sm font-semibold">Shipping</legend>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={Boolean(shipping.requiresShipping)} onCheckedChange={(value) => setShipping({ requiresShipping: Boolean(value) })} /> Requires shipping</label>
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={Boolean(shipping.freeShipping)} onCheckedChange={(value) => setShipping({ freeShipping: Boolean(value) })} /> Free shipping</label>
+        </div>
+        <Field label="Shipping class" htmlFor={fieldId('shippingProfile.shippingClass')} error={errors['shippingProfile.shippingClass']} className="max-w-xs">
+          <Input value={shipping.shippingClass || ''} maxLength={80} onChange={(event) => setShipping({ shippingClass: event.target.value })} placeholder="Optional" />
+        </Field>
+      </fieldset>
+      {form.attributes.length ? (
+        <fieldset className="grid gap-2 md:col-span-2">
+          <legend className="text-sm font-semibold">Attributes on this product</legend>
+          <ul className="grid gap-2">
+            {form.attributes.map((item) => (
+              <li key={item.attributeId} className="flex flex-wrap items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm">
+                <span className="font-semibold">{item.label || item.key || item.attributeId}</span>
+                {item.variation ? <Badge tone="primary">Used for variants</Badge> : null}
+                <label className="ml-auto flex items-center gap-2"><Checkbox checked={item.visible} onCheckedChange={(value) => setForm((current) => ({ ...current, attributes: current.attributes.map((entry) => (entry.attributeId === item.attributeId ? { ...entry, visible: Boolean(value) } : entry)) }))} /> Show on product page</label>
+                <Button variant="ghost" size="sm" aria-label={`Remove attribute ${item.label || item.key}`} disabled={usedForVariants.has(item.attributeId) && form.variants.some((variant) => variant.attributeValueIds?.length)} onClick={() => setForm((current) => ({ ...current, attributes: current.attributes.filter((entry) => entry.attributeId !== item.attributeId) }))}>Remove</Button>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-[var(--color-muted)]">Add variant attributes with Generate from attributes under Pricing and inventory.</p>
+        </fieldset>
+      ) : null}
     </div>
   );
-}
-
-function payload(form) {
-  const blank = (value) => (value === '' ? null : value);
-  const translationPayload = (translation) => Object.fromEntries(Object.entries(translation).map(([key, value]) => [key, ['careText', 'materialText', 'seoTitle', 'seoDescription'].includes(key) ? blank(value) : value || '']));
-  return {
-    ...form,
-    categoryId: blank(form.categoryId),
-    brandId: blank(form.brandId),
-    publishAt: blank(form.publishAt),
-    translations: {
-      en: translationPayload(form.translations.en),
-      bn: translationPayload(form.translations.bn),
-    },
-    variants: form.variants.map((variant) => ({
-      ...variant,
-      barcode: blank(variant.barcode),
-      salePrice: blank(variant.salePrice),
-      costPrice: blank(variant.costPrice),
-      weightGrams: variant.weightGrams === '' ? null : variant.weightGrams == null ? null : Number(variant.weightGrams),
-      lowStockThreshold: Number(variant.lowStockThreshold || 0),
-      ...(variant.stockPolicy !== 'available' ? { initialStock: Number(variant.initialStock || 0) } : {}),
-    })),
-    media: form.media.map((item) => ({ mediaId: item.mediaId, role: item.role, displayOrder: item.displayOrder, variantKey: blank(item.variantKey), altEn: blank(item.altEn), altBn: blank(item.altBn) })),
-  };
-}
-
-function createPayload(form) {
-  const base = payload(form);
-  return {
-    slug: base.slug,
-    categoryId: base.categoryId,
-    categoryIds: base.categoryIds,
-    collectionIds: base.collectionIds,
-    brandId: base.brandId,
-    type: base.type,
-    status: base.status,
-    publishAt: base.publishAt,
-    featured: base.featured,
-    visibility: base.visibility,
-    taxClass: base.taxClass,
-    shippingProfile: base.shippingProfile,
-    translations: base.translations,
-    attributes: base.attributes,
-    variants: base.variants.map(({ id: _id, clientKey: _clientKey, version: _version, initialStock, ...variant }) => ({ ...variant, ...(variant.stockPolicy !== 'available' && { stock: initialStock }) })),
-    media: base.media.map(({ variantKey: _variantKey, ...item }) => ({ ...item, variantSku: null })),
-  };
 }

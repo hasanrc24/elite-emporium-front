@@ -53,9 +53,9 @@ const ICONS = {
 
 const TONES = {
   info: 'border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)]',
-  success: 'border-[color-mix(in_srgb,var(--color-success)_24%,white)] bg-[var(--color-surface-raised)] text-[var(--color-success)]',
-  warning: 'border-[color-mix(in_srgb,var(--color-warning)_24%,white)] bg-[var(--color-surface-raised)] text-[var(--color-warning)]',
-  error: 'border-[color-mix(in_srgb,var(--color-danger)_24%,white)] bg-[var(--color-surface-raised)] text-[var(--color-danger)]'
+  success: 'border-[color-mix(in_srgb,var(--color-success)_24%,transparent)] bg-[var(--color-surface-raised)] text-[var(--color-success)]',
+  warning: 'border-[color-mix(in_srgb,var(--color-warning)_24%,transparent)] bg-[var(--color-surface-raised)] text-[var(--color-warning)]',
+  error: 'border-[color-mix(in_srgb,var(--color-danger)_24%,transparent)] bg-[var(--color-surface-raised)] text-[var(--color-danger)]'
 };
 
 export function ToastViewport({ className }) {

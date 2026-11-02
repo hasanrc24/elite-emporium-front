@@ -1,11 +1,11 @@
-import Link from 'next/link';
 import Image from 'next/image';
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { ArrowRight, ArrowUpRight, BadgeCheck, PackageCheck, PackageSearch, RotateCcw, Truck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ArrowRight, Banknote, RotateCcw, ShieldCheck, Truck } from 'lucide-react';
 import { ProductCard } from '@/components/storefront/product-card';
-import { StructuredContent } from '@/components/storefront/structured-content';
-import { serverGet } from '@/lib/api/server-api';
+import { BannerBlock, HeroBlock, StructuredContent } from '@/components/storefront/structured-content';
+import { serverGet, serverGetEnvelope } from '@/lib/api/server-api';
+import { htmlToText } from '@/lib/safe-html';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,61 +16,139 @@ function localized(value, locale) {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, localized(item, locale)]));
 }
 
+const list = (promise) => promise.then((value) => (Array.isArray(value) ? value : value?.data || [])).catch(() => []);
+
 export default async function HomePage({ params }) {
-  const { locale } = await params; const t = await getTranslations('Home');
-  let products = []; let home = null; let categories = []; let collections = [];
-  try { [products, home, categories, collections] = await Promise.all([serverGet('/products?featured=true&pageSize=12', { locale, tags: ['products'], revalidate: 60 }), serverGet('/storefront/home', { locale, tags: ['homepage'], revalidate: 60 }), serverGet('/categories', { locale, tags: ['categories'], revalidate: 300 }), serverGet('/collections', { locale, tags: ['collections'], revalidate: 300 })]); } catch { /* Backend may be bootstrapping. */ }
-  const sections = home?.sections || [];
-  if (!sections.length) return <StorefrontFallback locale={locale} t={t} products={products} categories={categories} />;
-  return <div className="grid gap-16 pb-12">{sections.map((section) => <HomepageSection key={section.id} section={{ ...section, config: localized(section.config, locale) }} locale={locale} products={products} categories={categories} collections={collections} />)}</div>;
-}
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'Home' });
+  const tt = await getTranslations({ locale, namespace: 'Trust' });
+  const [home, settings, categories, collections, featured, newest, sale] = await Promise.all([
+    serverGet('/storefront/home', { locale, tags: ['homepage'], revalidate: 60 }).catch(() => null),
+    serverGet('/storefront/settings', { locale, tags: ['settings'], revalidate: 60 }).catch(() => ({})),
+    list(serverGet('/categories', { locale, tags: ['categories'], revalidate: 300 })),
+    list(serverGet('/collections', { locale, tags: ['collections'], revalidate: 300 })),
+    list(serverGetEnvelope('/products?featured=true&pageSize=12', { locale, tags: ['products'], revalidate: 60 })),
+    list(serverGetEnvelope('/products?sort=newest&pageSize=12', { locale, tags: ['products'], revalidate: 60 })),
+    list(serverGetEnvelope('/products?sale=true&pageSize=12', { locale, tags: ['products'], revalidate: 60 }))
+  ]);
+  const sections = (home?.sections || []).map((section) => ({ ...section, config: localized(section.config, locale) }));
+  const topCategories = categories.filter((category) => !category.parentId);
+  const insideDays = settings?.delivery?.estimates?.inside_dhaka?.[locale] || settings?.delivery?.estimates?.inside_dhaka?.en;
+  const returnDays = settings?.returns?.enabled ? settings.returns.windowDays : null;
+  const fallbackImage = [...featured, ...newest].find((product) => product.primaryImage)?.primaryImage?.url;
 
-function HomepageSection({ section, locale, products, categories, collections }) {
-  const config = section.config || {};
-  if (['hero', 'banner', 'editorial', 'countdown', 'testimonials', 'newsletter'].includes(section.type)) {
-    const type = section.type === 'editorial' ? 'rich_text' : section.type;
-    const heroDefaults = section.type === 'hero' ? { title: locale === 'bn' ? 'আপনার প্রতিদিনের জন্য তৈরি' : 'Made for the life you live', text: locale === 'bn' ? 'আরাম, নিজস্বতা ও প্রতিদিনের আত্মবিশ্বাসের জন্য বাছাই করা পোশাক।' : 'Considered dresses for comfort, character, and everyday confidence.', url: '/shop', cta: locale === 'bn' ? 'কালেকশন দেখুন' : 'Explore the collection' } : {};
-    const rawUrl = config.url || config.cta?.href || heroDefaults.url;
-    const sectionUrl = rawUrl && !/^https:\/\//.test(rawUrl) && !rawUrl.startsWith(`/${locale}`) ? `/${locale}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}` : rawUrl;
-    const data = section.type === 'editorial' ? { html: config.html || config.body || '' } : { ...heroDefaults, ...config, title: config.title || heroDefaults.title, text: config.text || config.body || heroDefaults.text, url: sectionUrl, cta: config.cta?.label || config.cta || heroDefaults.cta, imageUrl: config.imageUrl || config.backgroundImage || products.find((product) => product.primaryImage)?.primaryImage?.url };
-    return <section className={section.type === 'hero' ? 'container pt-8' : 'container'}><StructuredContent locale={locale} blocks={[{ id: section.id, type, data }]} /></section>;
+  const blocks = {
+    categories: topCategories.length ? <CategoryCircles key="categories" title={t('categories')} categories={topCategories} locale={locale} /> : null,
+    newest: newest.length ? <ProductRail key="newest" title={t('newArrivals')} href={`/${locale}/shop?sort=newest`} viewAll={t('viewAll')} products={newest} locale={locale} /> : null,
+    featured: featured.length ? <ProductGridSection key="featured" title={t('bestSellers')} href={`/${locale}/shop`} viewAll={t('viewAll')} products={featured.slice(0, 8)} locale={locale} /> : null,
+    sale: sale.length ? <ProductRail key="sale" title={t('onSale')} href={`/${locale}/shop?sale=true`} viewAll={t('viewAll')} products={sale} locale={locale} /> : null,
+    collections: collections.length ? <CollectionTiles key="collections" title={t('collections')} viewAll={t('viewAll')} collections={collections} locale={locale} /> : null,
+    trust: <TrustStrip key="trust" items={[
+      [Banknote, tt('cod'), tt('codText')],
+      [Truck, tt('delivery'), insideDays ? tt('deliveryText', { days: insideDays }) : tt('delivery')],
+      ...(returnDays ? [[RotateCcw, tt('returns'), tt('returnsText', { days: returnDays })]] : []),
+      [ShieldCheck, tt('secure'), tt('secureText')]
+    ]} />
+  };
+
+  const heroSection = sections.find((section) => section.type === 'hero');
+  const heroData = heroSection
+    ? { ...heroSection.config, title: heroSection.config.title || t('title'), text: heroSection.config.text || htmlToText(heroSection.config.body) || t('subtitle'), url: heroSection.config.url || heroSection.config.cta?.href || '/shop?sort=newest', cta: heroSection.config.cta?.label || heroSection.config.cta || t('shop'), imageUrl: heroSection.config.imageUrl || heroSection.config.backgroundImage || fallbackImage }
+    : { eyebrow: t('eyebrow'), title: t('title'), text: t('subtitle'), url: '/shop?sort=newest', cta: t('shop'), secondaryUrl: sale.length ? '/shop?sale=true' : null, secondaryCta: t('secondary'), imageUrl: fallbackImage };
+
+  // Admin-ordered CMS sections drive the page; product/category sections map to live data.
+  const rendered = [];
+  const used = new Set();
+  for (const section of sections) {
+    if (section === heroSection) continue;
+    const config = section.config || {};
+    if (section.type === 'category_grid' && !used.has('categories')) { used.add('categories'); rendered.push(blocks.categories); }
+    else if (section.type === 'collection_grid' && !used.has('collections')) { used.add('collections'); rendered.push(blocks.collections); }
+    else if (section.type === 'product_carousel') {
+      const source = config.ids?.length ? [...featured, ...newest, ...sale].filter((product, index, all) => config.ids.includes(product.id) && all.findIndex((item) => item.id === product.id) === index) : featured;
+      if (source.length) rendered.push(<ProductRail key={section.id} title={config.title || t('bestSellers')} href={`/${locale}/shop`} viewAll={t('viewAll')} products={source} locale={locale} />);
+      used.add('featured');
+    }
+    else if (section.type === 'banner') rendered.push(<div key={section.id} className="container"><BannerBlock data={{ ...config, text: config.text || htmlToText(config.body), url: config.url || config.cta?.href, cta: config.cta?.label || config.cta }} locale={locale} /></div>);
+    else if (['editorial', 'countdown', 'testimonials', 'newsletter'].includes(section.type)) rendered.push(<div key={section.id} className="container"><StructuredContent locale={locale} blocks={[{ id: section.id, type: section.type === 'editorial' ? 'rich_text' : section.type, data: section.type === 'editorial' ? { html: config.html || config.body || '' } : config }]} /></div>);
   }
-  if (section.type === 'product_carousel') { const selected = config.ids?.length ? products.filter((product) => config.ids.includes(product.id)) : products.slice(0, config.query?.limit || 8); return <EntitySection title={config.title || 'Featured products'} href={`/${locale}/shop`}><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{selected.map((product) => <ProductCard key={product.id} product={product} locale={locale} />)}</div></EntitySection>; }
-  if (section.type === 'category_grid') return <EntitySection title={config.title || 'Shop categories'}><LinkGrid values={categories} locale={locale} type="category" ids={config.ids} /></EntitySection>;
-  if (section.type === 'collection_grid') return <EntitySection title={config.title || 'Collections'}><LinkGrid values={collections} locale={locale} type="collection" ids={config.ids} /></EntitySection>;
-  if (section.type === 'blog_feed') return <EntitySection title={config.title || 'Stories'} href={`/${locale}/blog`}><p className="muted">Explore the latest stories, styling ideas, and lookbooks.</p></EntitySection>;
-  return null;
+  const defaults = ['categories', 'newest', 'featured', 'sale', 'collections'].filter((key) => !used.has(key)).map((key) => blocks[key]).filter(Boolean);
+  const body = [blocks.categories && !used.has('categories') ? blocks.categories : null, blocks.trust, ...rendered, ...defaults.filter((block) => block !== blocks.categories)].filter(Boolean);
+  const hasProducts = featured.length || newest.length;
+
+  return (
+    <div className="grid gap-14 pb-6 md:gap-20">
+      <HeroBlock data={heroData} locale={locale} priority />
+      {body}
+      {!hasProducts ? <div className="container"><div className="empty-state"><div><p className="font-medium">{t('emptyTitle')}</p><p className="mt-1 text-sm text-[var(--color-muted)]">{t('emptyBody')}</p></div></div></div> : null}
+    </div>
+  );
 }
 
-function EntitySection({ title, href = null, children }) { return <section className="container"><div className="mb-7 flex items-end justify-between gap-5"><div><p className="eyebrow">Curated for you</p><h2 className="mt-2 text-2xl font-bold tracking-[-.04em] md:text-3xl">{title}</h2></div>{href ? <Link className="group hidden items-center gap-2 text-xs font-semibold transition hover:text-[var(--color-primary)] sm:inline-flex" href={href}>View all <ArrowUpRight size={15} /></Link> : null}</div>{children}{href ? <Link className="mt-7 flex items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-4 py-3 text-xs font-semibold sm:hidden" href={href}>View all <ArrowRight size={15} /></Link> : null}</section>; }
-function LinkGrid({ values, ids, locale, type }) { const selected = ids?.length ? values.filter((item) => ids.includes(item.id)) : values.slice(0, 8); return <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">{selected.map((item, index) => <Link className={`group relative min-h-52 overflow-hidden rounded-[var(--radius-lg)] bg-[var(--color-surface-muted)] p-6 transition duration-300 hover:-translate-y-1 hover:bg-[var(--color-primary-soft)] ${index < 2 ? 'lg:col-span-3' : 'lg:col-span-2'}`} key={item.id} href={`/${locale}/${type}/${item.slug}`}><span aria-hidden="true" className="absolute -bottom-20 -right-16 size-56 rounded-full border-[42px] border-white/50 transition duration-500 group-hover:scale-110" /><p className="eyebrow relative">{type}</p><h3 className="relative mt-4 max-w-[75%] text-2xl font-semibold tracking-[-.035em]">{item.name}</h3>{item.description ? <p className="relative mt-2 line-clamp-2 max-w-[80%] text-sm muted">{item.description}</p> : null}<span className="absolute bottom-5 right-5 grid size-10 place-items-center rounded-[.75rem] bg-[var(--color-surface)] text-[var(--color-primary)] transition group-hover:bg-[var(--color-primary)] group-hover:text-white"><ArrowUpRight size={17} /></span></Link>)}</div>; }
-
-function LaunchFallback({ locale, t, products }) { const bn = locale === 'bn'; return <>
-  <section className="relative overflow-hidden">
-    <div aria-hidden="true" className="absolute left-[9%] top-20 h-px w-24 bg-[var(--color-border-strong)]" />
-    <div className="container relative grid min-h-[690px] items-center gap-14 py-16 md:grid-cols-[1.08fr_.92fr] md:py-24">
-      <div className="relative z-10 max-w-3xl"><div className="mb-7 flex items-center gap-3"><span className="h-px w-8 bg-[var(--color-primary)]" /><p className="eyebrow">{t('eyebrow')}</p></div><h1 className="display-title">{t('title')}</h1><p className="mt-7 max-w-[54ch] text-base leading-8 muted sm:text-lg">{t('subtitle')}</p><div className="mt-9 flex flex-wrap items-center gap-5"><Button asChild className="min-h-12 px-6"><Link href={`/${locale}/shop`}>{t('shop')} <ArrowRight size={17} /></Link></Button><Link className="group inline-flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]" href={`/${locale}/track-order`}>{bn ? 'অর্ডার ট্র্যাক করুন' : 'Track an order'}<ArrowUpRight size={16} className="text-[var(--color-primary)] transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></Link></div><div className="mt-11 flex flex-wrap gap-x-8 gap-y-3 border-t border-[var(--color-border)] pt-5 text-xs font-medium text-[var(--color-muted)]"><span className="flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--color-primary)]" />{bn ? 'যাচাইকৃত মান' : 'Quality checked'}</span><span className="flex items-center gap-2"><Truck size={16} className="text-[var(--color-primary)]" />{bn ? 'সারাদেশে ডেলিভারি' : 'Delivery across Bangladesh'}</span></div></div>
-      <div aria-hidden="true" className="relative mx-auto aspect-[.92] w-full max-w-[520px]"><div className="absolute inset-x-[8%] bottom-[2%] top-[10%] rotate-3 rounded-[2.7rem] bg-[var(--color-primary-soft)]" /><div className="absolute bottom-[9%] left-0 top-0 w-[69%] -rotate-2 overflow-hidden rounded-[2.7rem] bg-[linear-gradient(155deg,var(--color-primary-strong),var(--color-primary))] shadow-[var(--shadow-md)]"><div className="absolute inset-0 bg-[radial-gradient(circle_at_74%_20%,rgb(255_255_255/.18),transparent_35%)]" /><div className="absolute left-8 top-8 text-[10px] font-semibold uppercase tracking-[.22em] text-white/55">Edition / 01</div><div className="absolute bottom-10 left-8 right-8"><span className="block text-[clamp(3rem,9vw,5rem)] font-medium leading-[.78] tracking-[-.08em] text-white">quiet<br />form</span><p className="mt-6 max-w-48 text-xs leading-5 text-white/60">Considered shape. Comfortable movement. Made for real days.</p></div></div><div className="absolute bottom-0 right-0 grid h-[58%] w-[49%] place-items-center overflow-hidden rounded-[2rem] border-[8px] border-[var(--color-bg)] bg-[var(--color-surface-muted)]"><div className="absolute -right-8 -top-10 size-44 rounded-full border-[34px] border-[var(--color-primary)]/12" /><div className="relative text-center"><p className="text-[5rem] font-medium leading-none tracking-[-.09em] text-[var(--color-primary)]">EE</p><p className="mt-3 text-[9px] font-semibold uppercase tracking-[.24em] text-[var(--color-muted)]">Dhaka · Bangladesh</p></div></div></div>
+function SectionHeader({ title, href, viewAll }) {
+  return (
+    <div className="mb-5 flex items-end justify-between gap-4 md:mb-7">
+      <h2 className="section-heading">{title}</h2>
+      {href ? <Link href={href} className="inline-flex shrink-0 items-center gap-1.5 text-[14px] underline-offset-4 hover:underline">{viewAll}<ArrowRight size={15} /></Link> : null}
     </div>
-  </section>
-  <div className="container grid overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] md:grid-cols-[1.4fr_1fr_1fr]"><Benefit Icon={PackageCheck} title={bn ? 'নির্বাচিত সংগ্রহ' : 'Thoughtfully selected'} text={bn ? 'মান ও আরামের জন্য' : 'Chosen for quality and comfort'} featured /><Benefit Icon={Truck} title={bn ? 'নির্ভরযোগ্য ডেলিভারি' : 'Reliable delivery'} text={bn ? 'অর্ডারের প্রতিটি ধাপে' : 'Updates at every order step'} /><Benefit Icon={RotateCcw} title={bn ? 'সহজ সহায়তা' : 'Easy support'} text={bn ? 'আপনার প্রয়োজনে পাশে' : 'Simple help when you need it'} /></div>
-  <div className="pt-24"><EntitySection title={t('featured')} href={`/${locale}/shop`}>{products.length ? <div className="grid gap-x-5 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">{products.map((product) => <ProductCard key={product.id} product={product} locale={locale} />)}</div> : <div className="empty-state"><div><PackageSearch className="mx-auto text-[var(--color-primary)]" /><p className="mt-4 font-semibold">{bn ? 'সংগ্রহ প্রস্তুত হচ্ছে' : 'The collection is being prepared'}</p><p className="mt-1 text-sm muted">{bn ? 'পণ্য যোগ হলে এখানে দেখা যাবে।' : 'Products will appear here as soon as they are published.'}</p></div></div>}</EntitySection></div>
-  </>; }
+  );
+}
 
-function Benefit({ Icon, title, text, featured = false }) { return <div className={`flex items-center gap-3 border-b border-[var(--color-border)] px-5 py-6 last:border-0 md:border-b-0 md:border-r md:last:border-r-0 ${featured ? 'bg-[var(--color-primary-soft)]' : ''}`}><span className="grid size-10 shrink-0 place-items-center rounded-[.75rem] bg-[var(--color-surface)] text-[var(--color-primary)]"><Icon size={18} /></span><div><p className="text-sm font-semibold">{title}</p><p className="text-xs muted">{text}</p></div></div>; }
+function CategoryCircles({ title, categories, locale }) {
+  return (
+    <section className="container" aria-labelledby="home-categories">
+      <h2 id="home-categories" className="section-heading mb-5 md:mb-7">{title}</h2>
+      <ul className="no-scrollbar -mx-4 flex gap-4 overflow-x-auto px-4 md:mx-0 md:grid md:grid-cols-6 md:gap-6 md:px-0">
+        {categories.slice(0, 12).map((category) => (
+          <li key={category.id} className="w-[84px] shrink-0 md:w-auto">
+            <Link href={`/${locale}/category/${category.slug}`} className="group grid justify-items-center gap-2.5 text-center">
+              <span className="relative block aspect-square w-full overflow-hidden rounded-full bg-[var(--color-surface)] ring-1 ring-[var(--color-border)] transition group-hover:ring-[var(--color-text)]">
+                {category.imageUrl ? <Image src={category.imageUrl} alt="" fill sizes="(min-width: 768px) 15vw, 84px" className="object-cover transition duration-500 group-hover:scale-105" /> : <span className="grid h-full place-items-center text-2xl font-medium text-[var(--color-muted)]">{category.name.slice(0, 1)}</span>}
+              </span>
+              <span className="line-clamp-2 text-[13px] md:text-[14px]">{category.name}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
-function StorefrontFallback({ locale, t, products, categories }) {
-  const bn = locale === 'bn';
-  const heroProducts = products.filter((product) => product.primaryImage).slice(0, 2);
-  return <div className="pb-10">
-    <section className="container pt-5">
-      <div className="grid min-h-[520px] overflow-hidden rounded-[var(--radius-lg)] bg-[#f1e9de] lg:grid-cols-[.85fr_1.15fr]">
-        <div className="flex flex-col justify-center p-8 sm:p-12 lg:p-16"><p className="eyebrow">{t('eyebrow')}</p><h1 className="mt-4 max-w-[12ch] text-[clamp(2.8rem,6vw,5.4rem)] font-bold leading-[.92] tracking-[-.065em]">{t('title')}</h1><p className="mt-5 max-w-[48ch] text-sm leading-7 text-[var(--color-muted)] sm:text-base">{t('subtitle')}</p><div className="mt-7 flex flex-wrap gap-2"><Button asChild className="!rounded-sm !bg-[#151719]"><Link href={`/${locale}/shop`}>{t('shop')}</Link></Button><Button asChild variant="secondary" className="!rounded-sm"><Link href={`/${locale}/shop?sale=true`}>{bn ? 'অফার দেখুন' : 'Explore new arrivals'}</Link></Button></div></div>
-        <div className="relative min-h-[340px] overflow-hidden bg-[#e7ddd0]">{heroProducts[0] ? <Image src={heroProducts[0].primaryImage.url} alt={heroProducts[0].primaryImage.alt || heroProducts[0].name} fill priority sizes="(max-width: 1024px) 100vw, 60vw" className="object-cover object-top" /> : <div className="absolute inset-0 grid place-items-center text-5xl font-bold tracking-[-.07em] text-[#9a6a2e]/25">ELITE EMPORIUM</div>}<div className="absolute inset-0 bg-gradient-to-r from-[#f1e9de]/35 via-transparent to-transparent" /></div>
+function ProductRail({ title, href, viewAll, products, locale }) {
+  return (
+    <section className="container" aria-label={title}>
+      <SectionHeader title={title} href={href} viewAll={viewAll} />
+      <div className="rail">{products.map((product) => <ProductCard key={product.id} product={product} locale={locale} sizes="(min-width: 1200px) 25vw, (min-width: 768px) 30vw, 45vw" />)}</div>
+    </section>
+  );
+}
+
+function ProductGridSection({ title, href, viewAll, products, locale }) {
+  return (
+    <section className="container" aria-label={title}>
+      <SectionHeader title={title} href={href} viewAll={viewAll} />
+      <div className="product-grid">{products.map((product) => <ProductCard key={product.id} product={product} locale={locale} />)}</div>
+    </section>
+  );
+}
+
+function CollectionTiles({ title, viewAll, collections, locale }) {
+  return (
+    <section className="container" aria-labelledby="home-collections">
+      <h2 id="home-collections" className="section-heading mb-5 md:mb-7">{title}</h2>
+      <div className="grid gap-3 md:grid-cols-2 md:gap-4">
+        {collections.slice(0, 4).map((collection) => <BannerBlock key={collection.id} locale={locale} data={{ title: collection.name, text: collection.description, imageUrl: collection.imageUrl, url: `/collection/${collection.slug}`, cta: viewAll }} />)}
       </div>
     </section>
-    <section className="container grid border-x border-b border-[var(--color-border)] sm:grid-cols-2 lg:grid-cols-4"><Benefit Icon={Truck} title={bn ? 'ক্যাশ অন ডেলিভারি' : 'Cash on delivery'} text={bn ? 'সারাদেশে' : 'Across Bangladesh'} /><Benefit Icon={PackageCheck} title={bn ? 'দ্রুত ডেলিভারি' : 'Reliable delivery'} text={bn ? 'ঢাকার ভিতরে দ্রুত' : 'Tracked order updates'} /><Benefit Icon={RotateCcw} title={bn ? 'সহজ রিটার্ন' : 'Easy returns'} text={bn ? '৭ দিনের মধ্যে' : 'Within 7 days'} /><Benefit Icon={BadgeCheck} title={bn ? 'নিরাপদ পেমেন্ট' : 'Secure payments'} text={bn ? 'সম্পূর্ণ সুরক্ষিত' : 'Safe checkout'} /></section>
-    {categories.length ? <section className="container pt-20"><div className="mb-7 flex items-end justify-between"><div><p className="eyebrow">Shop by category</p><h2 className="mt-2 text-3xl font-bold tracking-[-.045em]">Made for every day</h2></div><Link href={`/${locale}/shop`} className="text-xs font-semibold">View all →</Link></div><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{categories.slice(0, 4).map((category, index) => <Link key={category.id} href={`/${locale}/category/${category.slug}`} className="group relative flex min-h-56 items-end overflow-hidden rounded-[var(--radius-lg)] bg-[var(--color-surface-muted)] p-5"><span className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,white,transparent_55%)]" /><span className="relative"><span className="text-[10px] uppercase tracking-[.12em] text-[var(--color-muted)]">0{index + 1}</span><strong className="mt-1 block text-lg">{category.name}</strong><span className="text-xs text-[var(--color-primary)]">Shop now →</span></span></Link>)}</div></section> : null}
-    <section className="pt-20"><EntitySection title={t('featured')} href={`/${locale}/shop`}>{products.length ? <div className="grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-3 lg:grid-cols-4">{products.slice(0, 8).map((product) => <ProductCard key={product.id} product={product} locale={locale} />)}</div> : <div className="empty-state"><div><PackageSearch className="mx-auto" /><p className="mt-3">The collection is being prepared.</p></div></div>}</EntitySection></section>
-  </div>;
+  );
+}
+
+function TrustStrip({ items }) {
+  return (
+    <section className="container">
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-6 border-y border-[var(--color-border)] py-6 md:grid-cols-4">
+        {items.map(([Icon, title, text]) => <li key={title} className="flex items-start gap-3"><Icon size={22} strokeWidth={1.5} className="mt-0.5 shrink-0" aria-hidden="true" /><div><p className="text-[14px] font-medium">{title}</p><p className="text-[13px] text-[var(--color-muted)]">{text}</p></div></li>)}
+      </ul>
+    </section>
+  );
 }

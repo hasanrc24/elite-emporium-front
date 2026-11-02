@@ -16,7 +16,8 @@ const blankForm = () => ({
   overrideReason: '',
   note: '',
   status: 'draft',
-  locale: 'en'
+  locale: 'en',
+  channel: 'facebook'
 });
 
 export function ManualOrderEditor() {
@@ -24,6 +25,7 @@ export function ManualOrderEditor() {
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState([]);
   const [form, setForm] = useState(blankForm());
+  const [submission, setSubmission] = useState({ hash: null, key: null });
 
   const products = useQuery({
     queryKey: ['manual-order-products', search],
@@ -36,11 +38,14 @@ export function ManualOrderEditor() {
   });
 
   const create = useMutation({
-    mutationFn: () => browserApi.post(
-      '/admin/orders',
-      { ...form, items: lines.map(({ variantId, quantity, unitPrice }) => ({ variantId, quantity: Number(quantity), ...(unitPrice ? { unitPrice } : {}) })) },
-      { headers: { 'Idempotency-Key': crypto.randomUUID() } }
-    ).then((response) => response.data.data),
+    mutationFn: () => {
+      const body = { ...form, items: lines.map(({ variantId, quantity, unitPrice }) => ({ variantId, quantity: Number(quantity), ...(unitPrice ? { unitPrice } : {}) })) };
+      // A retry of the same order reuses its key so a lost response never creates a duplicate.
+      const hash = JSON.stringify(body);
+      const key = submission.hash === hash ? submission.key : crypto.randomUUID();
+      setSubmission({ hash, key });
+      return browserApi.post('/admin/orders', body, { headers: { 'Idempotency-Key': key } }).then((response) => response.data.data);
+    },
     onSuccess: (order) => router.replace(`/admin/orders/${order.id}`)
   });
 
@@ -111,7 +116,7 @@ export function ManualOrderEditor() {
                 <Field label="Override price">
                   <Input value={line.unitPrice} onChange={(event) => setLines(lines.map((entry, position) => position === index ? { ...entry, unitPrice: event.target.value } : entry))} placeholder={String(line.standardPrice)} />
                 </Field>
-                <Button variant="outline" onClick={() => setLines(lines.filter((_, position) => position !== index))}>Remove</Button>
+                <Button variant="outline" aria-label={`Remove ${line.name} ${line.title || ''}`.trim()} onClick={() => setLines(lines.filter((_, position) => position !== index))}>Remove</Button>
               </div>
             ))}
           </div>
@@ -122,13 +127,14 @@ export function ManualOrderEditor() {
         <CardHeader title="Shipping, discounts, and notes" />
         <CardBody>
           <FieldGroup columns={3}>
-            <Field label="Delivery zone">
+            <Field label="Delivery method">
               <NativeSelect
                 value={form.deliveryCode}
                 onChange={(event) => setForm({ ...form, deliveryCode: event.target.value })}
                 options={[
-                  { value: '', label: 'Pick a zone' },
-                  ...(shipping.data?.zones || []).map((zone) => ({ value: zone.code, label: `${zone.code} — ${zone.label}` }))
+                  { value: '', label: 'Pick a delivery method' },
+                  // The backend resolves deliveryCode against active shipping methods, not zones.
+                  ...(shipping.data?.methods || []).filter((method) => method.active && !method.archivedAt).map((method) => ({ value: method.code, label: `${method.labelEn || method.code} (${method.code})` }))
                 ]}
               />
             </Field>
@@ -140,6 +146,30 @@ export function ManualOrderEditor() {
             </Field>
             <Field label="Price override reason" className="md:col-span-2">
               <Input value={form.overrideReason} onChange={(event) => setForm({ ...form, overrideReason: event.target.value })} placeholder="Required when overriding prices" />
+            </Field>
+            <Field label="Order came from">
+              <NativeSelect
+                value={form.channel}
+                onChange={(event) => setForm({ ...form, channel: event.target.value })}
+                options={[
+                  { value: 'facebook', label: 'Facebook' },
+                  { value: 'instagram', label: 'Instagram' },
+                  { value: 'whatsapp', label: 'WhatsApp' },
+                  { value: 'phone', label: 'Phone call' },
+                  { value: 'walk_in', label: 'Walk-in' },
+                  { value: 'other', label: 'Other' }
+                ]}
+              />
+            </Field>
+            <Field label="Customer language">
+              <NativeSelect
+                value={form.locale}
+                onChange={(event) => setForm({ ...form, locale: event.target.value })}
+                options={[
+                  { value: 'bn', label: 'Bangla' },
+                  { value: 'en', label: 'English' }
+                ]}
+              />
             </Field>
             <Field label="Status">
               <NativeSelect

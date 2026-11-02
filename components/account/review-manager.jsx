@@ -1,21 +1,30 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { ImagePlus, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { apiMessage } from '@/lib/api/browser-api';
+import { apiMessage, browserApi } from '@/lib/api/browser-api';
 import { reviewApi } from '@/lib/api/review-api';
-import { Alert, Button, Card, CardBody, EmptyState, Field, Input, NativeSelect, Skeleton, Textarea } from '@/components/ui';
+import { Alert, Button, Card, CardBody, ConfirmAction, Field, Input, Skeleton, StatusBadge, Textarea } from '@/components/ui';
 import { pushToast, successToast, errorToast } from '@/components/ui/toast';
+import { useTableParams } from '@/lib/hooks/use-table-params';
+import { AccountList } from './list-parts';
 
-const RATINGS = [5, 4, 3, 2, 1].map((value) => ({ value: String(value), label: `${value} star${value === 1 ? '' : 's'}` }));
+const REVIEWS_PAGE_SIZE = 10;
+
+const FITS = ['small', 'true_to_size', 'large'];
 
 function StarRow({ rating }) {
+  const t = useTranslations('Account.reviews');
   return (
-    <p className="text-amber-600" aria-label={`${rating} of 5 stars`}>
+    <p className="text-amber-600" aria-label={t('stars', { count: rating })}>
       {'★'.repeat(rating)}
       {'☆'.repeat(5 - rating)}
     </p>
@@ -23,62 +32,68 @@ function StarRow({ rating }) {
 }
 
 export function ReviewList({ locale }) {
+  const t = useTranslations('Account.reviews');
+  const tUi = useTranslations('ui');
   const client = useQueryClient();
-  const reviews = useQuery({ queryKey: ['account', 'reviews'], queryFn: () => reviewApi.mine() });
+  const [params, setParams] = useTableParams({ page: 1 });
+  const reviews = useQuery({ queryKey: ['account', 'reviews', 'page', params.page], queryFn: () => reviewApi.mine({ page: params.page, pageSize: REVIEWS_PAGE_SIZE }), placeholderData: (previous) => previous });
   const remove = useMutation({
     mutationFn: (id) => reviewApi.remove(id),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ['account', 'reviews'] });
-      pushToast({ tone: 'success', title: 'Review deleted', description: 'Your review has been removed.' });
+      pushToast({ tone: 'success', title: t('deleted') });
     },
-    onError: (error) => pushToast({ tone: 'error', title: 'Could not delete review', description: apiMessage(error, 'Review could not be deleted.') })
+    onError: (error) => pushToast({ tone: 'error', title: t('deleteFailed'), description: apiMessage(error) })
   });
 
-  if (reviews.isLoading) {
-    return (
-      <Card>
-        <Skeleton className="h-32" />
-      </Card>
-    );
-  }
-  if (reviews.error) return <Alert tone="error">{apiMessage(reviews.error)}</Alert>;
-
-  const list = reviews.data?.data || [];
   return (
     <div className="grid gap-4">
-      <h2 className="text-2xl font-bold">Your reviews</h2>
-      {list.length ? (
-        list.map((review) => (
-          <Card key={review.id}>
+      <h2 className="text-2xl font-bold">{t('title')}</h2>
+      <AccountList
+        query={reviews}
+        columns={[]}
+        mobileOnly
+        caption={t('title')}
+        page={params.page}
+        pageSize={REVIEWS_PAGE_SIZE}
+        onPageChange={(page) => setParams({ page })}
+        emptyTitle={t('emptyTitle')}
+        emptyDescription={t('emptyBody')}
+        emptyAction={<Button asChild><Link href={`/${locale}/account/orders`}>{t('viewOrders')}</Link></Button>}
+        renderCard={(review) => (
+          <Card>
             <CardBody className="flex flex-wrap justify-between gap-3">
               <div className="grid gap-1">
                 <StarRow rating={review.rating} />
-                <h3 className="mt-1 font-bold">{review.title || 'Product review'}</h3>
+                <h3 className="mt-1 font-bold">{review.title || t('untitled')}</h3>
                 <p className="mt-2">{review.body}</p>
-                <p className="mt-3 text-sm capitalize text-[var(--color-muted)]">Status: {review.status}</p>
+                <p className="mt-3 flex items-center gap-2 text-sm text-[var(--color-muted)]">{t('status')}: <StatusBadge status={review.status} locale={locale} /></p>
               </div>
               <div className="flex h-fit gap-2">
                 {['pending', 'rejected'].includes(review.status) ? (
                   <Button asChild variant="secondary">
-                    <Link href={`/${locale}/account/reviews/new?reviewId=${review.id}`}>Edit</Link>
+                    <Link href={`/${locale}/account/reviews/new?reviewId=${review.id}`}>{t('edit')}</Link>
                   </Button>
                 ) : null}
-                <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate(review.id)}>
-                  Delete
-                </Button>
+                <ConfirmAction
+                  title={t('confirmDelete')}
+                  confirmLabel={t('delete')}
+                  cancelLabel={tUi('cancel')}
+                  onConfirm={() => remove.mutate(review.id)}
+                  trigger={<Button variant="danger" loading={remove.isPending && remove.variables === review.id}>{t('delete')}</Button>}
+                />
               </div>
             </CardBody>
           </Card>
-        ))
-      ) : (
-        <EmptyState title="You have not submitted any reviews." description="Reviews help other shoppers and reward you with loyalty points." />
-      )}
+        )}
+      />
       {remove.error ? <Alert tone="error">{apiMessage(remove.error)}</Alert> : null}
     </div>
   );
 }
 
 export function ReviewForm({ locale }) {
+  const t = useTranslations('Account.reviews');
   const search = useSearchParams();
   const router = useRouter();
   const productId = search.get('productId');
@@ -87,7 +102,7 @@ export function ReviewForm({ locale }) {
 
   const existing = useQuery({
     queryKey: ['account', 'reviews'],
-    queryFn: () => reviewApi.mine(),
+    queryFn: () => reviewApi.mine({ pageSize: 100 }),
     enabled: Boolean(reviewId)
   });
   const review = existing.data?.data?.find((item) => item.id === reviewId);
@@ -99,7 +114,7 @@ export function ReviewForm({ locale }) {
       </Card>
     );
   }
-  if (reviewId && !review) return <Alert tone="error">Review not found or cannot be edited.</Alert>;
+  if (reviewId && !review) return <Alert tone="error">{t('notFound')}</Alert>;
 
   return (
     <ReviewEditor
@@ -113,56 +128,103 @@ export function ReviewForm({ locale }) {
 }
 
 function ReviewEditor({ review, productId, orderItemId, onSaved }) {
+  const t = useTranslations('Account.reviews');
+  const schema = useMemo(() => z.object({
+    rating: z.number().int().min(1, t('errors.rating')).max(5),
+    fit: z.enum(FITS).nullable(),
+    title: z.string().trim().max(180, t('errors.titleLength')).optional().default(''),
+    body: z.string().trim().min(10, t('errors.bodyLength')).max(5000, t('errors.bodyMax'))
+  }), [t]);
   const form = useForm({
-    resolver: zodResolver(z.object({
-      rating: z.coerce.number().int().min(1, 'Please select a rating').max(5, 'Rating cannot exceed 5'),
-      title: z.string().trim().max(180, 'Title must be 180 characters or fewer').optional().default(''),
-      body: z.string().trim().min(10, 'Review must be at least 10 characters').max(5000, 'Review must be 5000 characters or fewer'),
-    })),
-    defaultValues: { rating: review?.rating || 5, title: review?.title || '', body: review?.body || '' },
+    resolver: zodResolver(schema),
+    defaultValues: { rating: review?.rating || 5, fit: review?.fit || null, title: review?.title || '', body: review?.body || '' }
+  });
+  const [rating, fit] = useWatch({ control: form.control, name: ['rating', 'fit'] });
+  const [photos, setPhotos] = useState(() => (review?.media || []).map((item) => ({ id: item.id, url: item.url })));
+  const upload = useMutation({
+    mutationFn: (file) => {
+      const data = new FormData();
+      data.append('file', file);
+      data.append('purpose', 'review');
+      return browserApi.post('/media/upload', data).then((response) => response.data.data);
+    },
+    onSuccess: (asset) => setPhotos((current) => [...current, { id: asset.id, url: asset.url || asset.variants?.[0]?.url || null }]),
+    onError: (error) => errorToast(t('uploadFailed'), apiMessage(error))
   });
   const save = useMutation({
     mutationFn: (values) =>
       review
-        ? reviewApi.update(review.id, { rating: Number(values.rating), title: values.title, body: values.body, mediaIds: [], version: review.version })
-        : reviewApi.create({ productId, orderItemId, rating: Number(values.rating), title: values.title, body: values.body, mediaIds: [] }),
+        ? reviewApi.update(review.id, { rating: values.rating, fit: values.fit, title: values.title, body: values.body, mediaIds: photos.map((photo) => photo.id), version: review.version })
+        : reviewApi.create({ productId, orderItemId, rating: values.rating, fit: values.fit, title: values.title, body: values.body, mediaIds: photos.map((photo) => photo.id) }),
     onSuccess: () => {
-      successToast('Review submitted', 'Your review has been submitted for moderation');
+      successToast(t('submitted'), t('submittedBody'));
       onSaved();
     },
-    onError: (error) => errorToast('Failed to submit review', apiMessage(error, 'Could not submit review')),
+    onError: (error) => errorToast(t('submitFailed'), apiMessage(error)),
   });
 
   if (!review && (!productId || !orderItemId)) {
-    return <Alert tone="error">Choose a fulfilled order item before writing a review.</Alert>;
+    return <Alert tone="error">{t('chooseItem')}</Alert>;
   }
 
   return (
     <form className="card grid gap-5 p-6" onSubmit={form.handleSubmit((values) => save.mutate(values))}>
       <div>
-        <h2 className="text-2xl font-bold">{review ? 'Edit review' : 'Write a review'}</h2>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">Reviews are linked to a fulfilled purchase and may require moderation.</p>
+        <h2 className="text-2xl font-bold">{review ? t('editTitle') : t('newTitle')}</h2>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">{t('intro')}</p>
       </div>
 
-      <Field label="Rating" required error={form.formState.errors.rating?.message}>
-        <NativeSelect
-          {...form.register('rating', { valueAsNumber: true })}
-          options={RATINGS}
-        />
-      </Field>
+      <fieldset>
+        <legend className="text-sm font-medium">{t('rating')}</legend>
+        <div className="mt-2 flex gap-1" role="radiogroup" aria-label={t('rating')}>
+          {[1, 2, 3, 4, 5].map((value) => (
+            <button key={value} type="button" role="radio" aria-checked={rating === value} aria-label={t('stars', { count: value })} onClick={() => form.setValue('rating', value, { shouldValidate: true })} className={`text-3xl leading-none transition ${value <= rating ? 'text-amber-500' : 'text-[var(--color-border-strong)]'}`}>★</button>
+          ))}
+        </div>
+        {form.formState.errors.rating ? <p className="mt-1 text-sm text-[var(--color-danger)]">{form.formState.errors.rating.message}</p> : null}
+      </fieldset>
 
-      <Field label="Title (optional)" error={form.formState.errors.title?.message}>
+      <fieldset>
+        <legend className="text-sm font-medium">{t('fit')}</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {FITS.map((value) => (
+            <button key={value} type="button" aria-pressed={fit === value} onClick={() => form.setValue('fit', fit === value ? null : value)} className={`min-h-10 rounded-full border px-4 text-sm transition ${fit === value ? 'border-[var(--color-text)] bg-[var(--color-text)] text-[var(--color-bg)]' : 'border-[var(--color-border-strong)] hover:border-[var(--color-text)]'}`}>{t(`fits.${value}`)}</button>
+          ))}
+        </div>
+      </fieldset>
+
+      <Field label={t('titleField')} error={form.formState.errors.title?.message}>
         <Input maxLength={180} {...form.register('title')} />
       </Field>
 
-      <Field label="Review" required error={form.formState.errors.body?.message}>
+      <Field label={t('body')} required error={form.formState.errors.body?.message}>
         <Textarea required minLength={10} maxLength={5000} rows={6} {...form.register('body')} />
       </Field>
+
+      <div className="grid gap-2">
+        <p className="text-sm font-medium">{t('photos')}</p>
+        <div className="flex flex-wrap gap-3">
+          {photos.map((photo) => (
+            <div key={photo.id} className="relative size-20 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
+              {photo.url ? <Image src={photo.url} alt="" fill sizes="80px" className="object-cover" unoptimized /> : null}
+              <button type="button" className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-white/90 text-[#111]" aria-label={t('removePhoto')} onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))}><X size={13} /></button>
+            </div>
+          ))}
+          {photos.length < 5 ? (
+            <label className={`grid size-20 cursor-pointer place-items-center rounded-[var(--radius-sm)] border border-dashed border-[var(--color-border-strong)] text-[var(--color-muted)] hover:border-[var(--color-text)] ${upload.isPending ? 'pointer-events-none opacity-50' : ''}`}>
+              <ImagePlus size={20} aria-hidden="true" />
+              <span className="sr-only">{t('addPhoto')}</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) upload.mutate(file); }} />
+            </label>
+          ) : null}
+        </div>
+        <p className="text-xs text-[var(--color-muted)]">{t('photosHint')}</p>
+      </div>
 
       {save.error ? <Alert tone="error">{apiMessage(save.error)}</Alert> : null}
 
       <div>
-        <Button loading={save.isPending} type="submit">Submit review</Button>
+        <Button loading={save.isPending} type="submit" disabled={upload.isPending}>{t('submit')}</Button>
       </div>
     </form>
   );

@@ -13,6 +13,7 @@ import {
   ControlledRadioGroup,
   EmptyState,
   Field,
+  Combobox,
   Input,
   MultiSelect,
   RadioItem,
@@ -89,6 +90,24 @@ describe('UI primitives', () => {
     ));
   });
 
+  it('renders select and date panels outside clipping containers', () => {
+    render(
+      <div data-testid="clip" style={{ overflow: 'hidden' }}>
+        <Select options={[{ value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }]} defaultValue="draft" />
+        <DateRangePicker value={{ from: '', to: '' }} onChange={() => {}} />
+      </div>
+    );
+    const clip = screen.getByTestId('clip');
+    fireEvent.click(screen.getByRole('button', { name: 'Draft' }));
+    const listbox = screen.getByRole('listbox');
+    expect(clip.contains(listbox)).toBe(false);
+    expect(screen.getByRole('button', { name: 'Draft' })).toHaveAttribute('aria-haspopup', 'listbox');
+    fireEvent.click(screen.getByRole('option', { name: 'Published' }));
+    fireEvent.click(screen.getByRole('button', { name: /Select date range/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Choose a date range' });
+    expect(clip.contains(dialog)).toBe(false);
+  });
+
   it('renders StatusBadge with localized label for known status', () => {
     render(<StatusBadge status="paid" locale="en" />);
     expect(screen.getByText('Paid')).toBeInTheDocument();
@@ -136,5 +155,20 @@ describe('UI primitives', () => {
     expect(screen.getByRole('option', { name: 'Food' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('option', { name: 'Travel' }));
     expect(onChange).toHaveBeenCalledWith(['food', 'travel']);
+  });
+});
+
+describe('Field labels reach custom select controls', () => {
+  it('names the MultiSelect, Combobox and Select buttons through their Field label', () => {
+    render(
+      <div>
+        <Field label="Size charts" htmlFor="pf-size"><MultiSelect value={[]} options={[{ value: 'a', label: 'A' }]} onChange={() => {}} /></Field>
+        <Field label="Primary category" required htmlFor="pf-cat"><Combobox value={null} options={[{ value: 'a', label: 'A' }]} onChange={() => {}} /></Field>
+        <Field label="Status" htmlFor="pf-status"><Select value="a" options={[{ value: 'a', label: 'A' }]} onChange={() => {}} /></Field>
+      </div>
+    );
+    expect(screen.getByLabelText('Size charts').id).toBe('pf-size');
+    expect(screen.getByLabelText('Primary category', { exact: false }).tagName).toBe('BUTTON');
+    expect(screen.getByLabelText('Status').tagName).toBe('BUTTON');
   });
 });

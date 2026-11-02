@@ -73,13 +73,13 @@ export function Badge({ tone = 'neutral', className, children }) {
   const tones = {
     neutral: 'bg-[var(--color-surface-muted)] text-[var(--color-text)]',
     primary: 'bg-[var(--color-primary-soft)] text-[var(--color-primary-strong)]',
-    success: 'bg-[color-mix(in_srgb,var(--color-success)_12%,white)] text-[var(--color-success)]',
-    warning: 'bg-[color-mix(in_srgb,var(--color-warning)_12%,white)] text-[var(--color-warning)]',
-    danger: 'bg-[color-mix(in_srgb,var(--color-danger)_12%,white)] text-[var(--color-danger)]',
+    success: 'bg-[color-mix(in_srgb,var(--color-success)_14%,transparent)] text-[var(--color-success)]',
+    warning: 'bg-[color-mix(in_srgb,var(--color-warning)_14%,transparent)] text-[var(--color-warning)]',
+    danger: 'bg-[color-mix(in_srgb,var(--color-danger)_14%,transparent)] text-[var(--color-danger)]',
     info: 'bg-[var(--color-primary-soft)] text-[var(--color-primary-strong)]'
   };
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[.72rem] font-semibold uppercase tracking-wider', tones[tone] ?? tones.neutral, className)}>
+    <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[.72rem] font-semibold uppercase tracking-wider', tones[tone] ?? tones.neutral, className)}>
       {children}
     </span>
   );

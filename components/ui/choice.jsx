@@ -21,7 +21,7 @@ export const Checkbox = forwardRef(function Checkbox({ className, checked, onChe
       )}
       {...rest}
     >
-      <RCheckbox.Indicator className="text-white">
+      <RCheckbox.Indicator className="text-[var(--color-on-primary)]">
         {indeterminate ? <Minus className="h-3.5 w-3.5" aria-hidden="true" /> : <Check className="h-3.5 w-3.5" aria-hidden="true" />}
       </RCheckbox.Indicator>
     </RCheckbox.Root>
@@ -73,7 +73,7 @@ export function RadioItem({ value, label, description, disabled, id: providedId 
   const id = providedId || `radio-${generatedId}`;
   return (
     <label htmlFor={id} className={cn('flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3 text-sm transition hover:border-[var(--color-border-strong)] has-[[data-state=checked]]:border-[var(--color-primary)] has-[[data-state=checked]]:bg-[var(--color-primary-soft)]', disabled && 'cursor-not-allowed opacity-60')}>
-      <RRadio.Item id={id} value={value} disabled={disabled} className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-[var(--color-border-strong)] bg-white text-[var(--color-primary)] focus:outline-none focus-visible:shadow-[var(--shadow-focus)] data-[state=checked]:border-[var(--color-primary)]">
+      <RRadio.Item id={id} value={value} disabled={disabled} className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface-raised)] text-[var(--color-primary)] focus:outline-none focus-visible:shadow-[var(--shadow-focus)] data-[state=checked]:border-[var(--color-primary)]">
         <RRadio.Indicator className="flex h-full w-full items-center justify-center after:h-2 after:w-2 after:rounded-full after:bg-[var(--color-primary)] after:content-['']" />
       </RRadio.Item>
       <span className="grid gap-0.5">
@@ -94,7 +94,7 @@ export const Switch = forwardRef(function Switch({ className, ...rest }, ref) {
       )}
       {...rest}
     >
-      <RSwitch.Thumb className="pointer-events-none block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow-sm transition-transform group-data-[state=checked]:translate-x-[1.4rem]" />
+      <RSwitch.Thumb className="pointer-events-none block h-5 w-5 translate-x-0.5 rounded-full bg-[var(--color-surface-raised)] shadow-sm transition-transform group-data-[state=checked]:bg-[var(--color-on-primary)] group-data-[state=checked]:translate-x-[1.4rem]" />
     </RSwitch.Root>
   );
 });
@@ -153,7 +153,7 @@ export function Slider({ value = 0, min = 0, max = 100, step = 1, onValueChange,
         className={cn('relative h-2 w-full rounded-full bg-[var(--color-surface-muted)] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]', disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')}
       >
         <span className="absolute inset-y-0 left-0 rounded-full bg-[var(--color-primary)]" style={{ width: `${pct}%` }} />
-        <span className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[var(--color-primary)] shadow" style={{ left: `${pct}%` }} />
+        <span className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[var(--color-surface-raised)] bg-[var(--color-primary)] shadow" style={{ left: `${pct}%` }} />
       </div>
     </div>
   );

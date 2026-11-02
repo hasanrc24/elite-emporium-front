@@ -35,7 +35,7 @@ export {
 } from './overlay';
 export { Alert, InlineError, Skeleton, Spinner, EmptyState, ErrorState } from './feedback';
 export { ToastViewport, pushToast, dismissToast } from './toast';
-export { DataTable, tableHeader } from './data-table';
+export { DataTable, TableFooter, actionsColumn } from './data-table';
 export { DatePicker, DateRangePicker } from './date-picker';
 export {
   ControlledCheckbox,

@@ -27,6 +27,13 @@ const STATUS_LABELS = {
   delivered: { en: 'Delivered', bn: 'ডেলিভারড', tone: 'success' },
   partially_returned: { en: 'Partially returned', bn: 'আংশিক ফেরত', tone: 'warning' },
   returned: { en: 'Returned', bn: 'ফেরত হয়েছে', tone: 'neutral' },
+  returned_to_origin: { en: 'Returned to origin', bn: 'ফেরত এসেছে (RTO)', tone: 'danger' },
+  partially_paid: { en: 'Partially paid', bn: 'আংশিক পরিশোধিত', tone: 'warning' },
+  not_required: { en: 'Not required', bn: 'প্রয়োজন নেই', tone: 'neutral' },
+  no_answer: { en: 'No answer', bn: 'ফোন ধরেনি', tone: 'warning' },
+  wrong_number: { en: 'Wrong number', bn: 'ভুল নম্বর', tone: 'danger' },
+  customer_cancelled: { en: 'Customer cancelled', bn: 'গ্রাহক বাতিল করেছেন', tone: 'danger' },
+  call_back: { en: 'Call back', bn: 'পরে কল', tone: 'warning' },
   approved: { en: 'Approved', bn: 'অনুমোদিত', tone: 'success' },
   rejected: { en: 'Rejected', bn: 'প্রত্যাখ্যাত', tone: 'danger' },
   spam: { en: 'Spam', bn: 'স্প্যাম', tone: 'danger' },
@@ -35,14 +42,9 @@ const STATUS_LABELS = {
   received: { en: 'Received', bn: 'গৃহীত', tone: 'info' }
 };
 
-export function Money({ value, currency = 'BDT', locale = 'en', className, signed = false }) {
+export function Money({ value, locale = 'en', className, signed = false }) {
   const numeric = Number(value || 0);
-  const formatted = new Intl.NumberFormat(locale === 'bn' ? 'bn-BD' : 'en-BD', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 0
-  }).format(numeric);
+  const formatted = baseFormatMoney(value, locale);
   return (
     <span className={className} data-numeric>
       {signed && numeric > 0 ? '+' : ''}
@@ -69,7 +71,7 @@ export function StatusBadge({ status, locale = 'en', className }) {
 
 export function useFormatter(locale = 'en') {
   return {
-    money: (value, currency = 'BDT') => baseFormatMoney(value, locale === 'bn' ? 'bn-BD' : 'en-BD'),
+    money: (value) => baseFormatMoney(value, locale),
     status: (status) => {
       const entry = STATUS_LABELS[status];
       if (!entry) return status;
@@ -99,8 +101,8 @@ export function FormattedDate({ value, locale = 'en', withTime = false, classNam
   );
 }
 
-export function FormattedMoney({ value, locale = 'en', currency = 'BDT', className }) {
-  return <span className={className} data-numeric>{new Intl.NumberFormat(locale === 'bn' ? 'bn-BD' : 'en-BD', { style: 'currency', currency, maximumFractionDigits: 2 }).format(Number(value || 0))}</span>;
+export function FormattedMoney({ value, locale = 'en', className }) {
+  return <span className={className} data-numeric>{baseFormatMoney(value, locale)}</span>;
 }
 
 export function Translate({ k, fallback }) {

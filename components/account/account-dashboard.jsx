@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { orderApi } from '@/lib/api/order-api';
@@ -7,23 +8,24 @@ import { accountApi } from '@/lib/api/account-api';
 import { Card, CardBody, CardHeader, FormattedMoney, StatusBadge } from '@/components/ui';
 
 export function AccountDashboard({ locale }) {
+  const t = useTranslations('Account.dashboard');
   const orders = useQuery({ queryKey: ['orders', { pageSize: 3 }], queryFn: () => orderApi.list({ pageSize: 3 }) });
   const returns = useQuery({ queryKey: ['account', 'returns', { pageSize: 3 }], queryFn: () => accountApi.returns({ pageSize: 3 }) });
 
   return (
     <div className="grid gap-6">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Summary title="Recent orders" value={orders.data?.meta?.total ?? '—'} href={`/${locale}/account/orders`} />
-        <Summary title="Return requests" value={returns.data?.meta?.total ?? '—'} href={`/${locale}/account/returns`} />
-        <Summary title="Saved items" value="—" href={`/${locale}/wishlist`} />
+        <Summary title={t('orders')} value={orders.data?.meta?.total ?? '—'} href={`/${locale}/account/orders`} />
+        <Summary title={t('returns')} value={returns.data?.meta?.total ?? '—'} href={`/${locale}/account/returns`} />
+        <Summary title={t('saved')} value="—" href={`/${locale}/wishlist`} />
       </div>
 
       <Card>
         <CardHeader
-          title="Latest orders"
+          title={t('latest')}
           action={
             <Link href={`/${locale}/account/orders`} className="text-sm font-semibold text-[var(--color-primary)] hover:underline">
-              View all
+              {t('viewAll')}
             </Link>
           }
         />
@@ -37,7 +39,7 @@ export function AccountDashboard({ locale }) {
               >
                 <span className="grid gap-1">
                   <strong className="font-semibold">{order.reference}</strong>
-                  <StatusBadge status={order.orderStatus} />
+                  <StatusBadge status={order.orderStatus} locale={locale} />
                 </span>
                 <strong className="font-semibold">
                   <FormattedMoney value={order.totals.grand} locale={locale} />
@@ -46,7 +48,7 @@ export function AccountDashboard({ locale }) {
             ))
           ) : (
             <CardBody>
-              <p className="text-center text-sm text-[var(--color-muted)]">No account orders yet.</p>
+              <p className="text-center text-sm text-[var(--color-muted)]">{t('noOrders')}</p>
             </CardBody>
           )}
         </div>
@@ -56,12 +58,13 @@ export function AccountDashboard({ locale }) {
 }
 
 function Summary({ title, value, href }) {
+  const t = useTranslations('Account.dashboard');
   return (
-    <Link href={href} className="group rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-5 transition hover:border-[var(--color-primary)]">
+    <Link href={href} className="group rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-5 transition hover:border-[var(--color-primary)]">
       <p className="text-xs font-medium text-[var(--color-muted)]">{title}</p>
       <p className="mt-2 text-3xl font-semibold tracking-[-.05em]" data-numeric>{value}</p>
       <p className="mt-4 text-xs font-semibold text-[var(--color-primary)]">
-        View all <span className="inline-block transition group-hover:translate-x-1">→</span>
+        {t('viewAll')} <span className="inline-block transition group-hover:translate-x-1">→</span>
       </p>
     </Link>
   );

@@ -23,6 +23,7 @@ export function ImageUpload({
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [previews, setPreviews] = useState([]);
+  const [uploadError, setUploadError] = useState('');
 
   function createPreview(file) {
     return new Promise((resolve) => {
@@ -42,8 +43,13 @@ export function ImageUpload({
       setPreviews((prev) => [...prev, ...newPreviews]);
 
       if (onUpload) {
-        const results = await Promise.all(toUpload.map((f) => onUpload(f)));
-        onChange?.([...value, ...results]);
+        setUploadError('');
+        // A failed upload must not leave spinners stuck or drop the files that did upload.
+        const settled = await Promise.allSettled(toUpload.map((f) => onUpload(f)));
+        const results = settled.filter((item) => item.status === 'fulfilled' && item.value).map((item) => item.value);
+        const failed = settled.length - results.length;
+        if (results.length) onChange?.([...value, ...results]);
+        if (failed) setUploadError(settled.find((item) => item.status === 'rejected')?.reason?.response?.data?.error?.message || `${failed} file${failed === 1 ? '' : 's'} could not be uploaded.`);
         setPreviews([]);
       } else {
         onChange?.([
@@ -64,7 +70,10 @@ export function ImageUpload({
 
   function handlePicker(files) {
     if (!files?.length) return;
-    processFiles(files);
+    processFiles(files).finally(() => {
+      // Allow choosing the same file again after a failure or removal.
+      if (inputRef.current) inputRef.current.value = '';
+    });
   }
 
   function remove(index) {
@@ -141,6 +150,8 @@ export function ImageUpload({
           ))}
         </div>
       ) : null}
+
+      {uploadError || error ? <p role="alert" className="error">{uploadError || error}</p> : null}
 
       {value.length > 0 ? (
         <div className="flex gap-2">

@@ -1,5 +1,10 @@
-import Link from 'next/link';
-import { CheckCircle2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-export const metadata = { title: 'Order received', robots: { index: false } };
-export default async function SuccessPage({ params }) { const { locale, reference } = await params; return <div className="container py-12 md:py-20"><div className="storefront-panel mx-auto max-w-3xl p-8 text-center md:p-12"><CheckCircle2 className="mx-auto text-[var(--color-success)]" size={48} /><p className="eyebrow mt-5">Order received</p><h1 className="mt-2 text-3xl font-bold tracking-[-.045em]">Thank you for your order!</h1><p className="mt-3 text-sm text-[var(--color-muted)]">Your order number is</p><strong className="mt-2 block text-lg">{reference}</strong><p className="mx-auto mt-4 max-w-lg text-sm text-[var(--color-muted)]">We’ll send confirmation and delivery updates using the contact details provided.</p><div className="mt-8 flex flex-wrap justify-center gap-3"><Button asChild className="!rounded-sm !bg-[#151719]"><Link href={`/${locale}/track-order?reference=${encodeURIComponent(reference)}`}>Track order</Link></Button><Button asChild variant="secondary"><Link href={`/${locale}/shop`}>Continue shopping</Link></Button></div><Link href={`/${locale}/register?orderReference=${encodeURIComponent(reference)}&returnTo=/${locale}/account/orders`} className="mt-5 inline-block text-xs font-semibold text-[var(--color-primary)]">Create an account and link this order →</Link></div></div>; }
+import { notFound } from 'next/navigation';
+import { OrderSuccess } from '@/components/storefront/order-success';
+
+export const metadata = { title: 'Order placed', robots: { index: false } };
+
+export default async function SuccessPage({ params }) {
+  const { locale, reference } = await params;
+  if (!/^[A-Z0-9_-]{4,40}$/i.test(reference)) notFound();
+  return <div className="container"><OrderSuccess locale={locale} reference={reference} /></div>;
+}

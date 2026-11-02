@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiMessage, browserApi } from '@/lib/api/browser-api';
-import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Field, FieldGroup, Input, NativeSelect, Skeleton } from '@/components/ui';
+import { invalidateStorefrontSettings } from '@/app/actions/revalidate-settings';
+import { tokenManager } from '@/lib/auth/token-manager';
+import { ActionMenu, Alert, Button, Card, CardBody, CardHeader, Checkbox, Field, FieldGroup, Input, NativeSelect, Skeleton } from '@/components/ui';
 import { AdminPageHeader } from './admin-page-header';
 
 const SECTION_TYPES = ['hero', 'banner', 'product_carousel', 'category_grid', 'collection_grid', 'countdown', 'testimonials', 'editorial', 'newsletter', 'blog_feed'];
@@ -67,7 +69,7 @@ function HomeSectionForm({ initial = blankHome, onSaved }) {
   const id = initial.id;
   const mutate = useMutation({
     mutationFn: () => (id ? browserApi.patch(`/admin/home-sections/${id}`, form) : browserApi.post('/admin/home-sections', form)),
-    onSuccess: onSaved
+    onSuccess: async () => { onSaved(); await invalidateStorefrontSettings(tokenManager.get()); }
   });
   const text = (path) => path.split('.').reduce((value, key) => value?.[key], form.config) || '';
   const setText = (path, value) => {
@@ -152,7 +154,7 @@ function MenuForm({ initial, onSaved }) {
   );
   const mutation = useMutation({
     mutationFn: () => (initial ? browserApi.patch(`/admin/menus/${initial.id}`, form) : browserApi.post('/admin/menus', form)),
-    onSuccess: () => { onSaved(); if (!initial) setForm({ location: '', name: '', status: 'draft', items: [], version: 1 }); }
+    onSuccess: async () => { onSaved(); if (!initial) setForm({ location: '', name: '', status: 'draft', items: [], version: 1 }); await invalidateStorefrontSettings(tokenManager.get()); }
   });
   const updateItem = (index, patch) =>
     setForm({ ...form, items: form.items.map((item, position) => (position === index ? { ...item, ...patch } : item)) });
@@ -206,16 +208,22 @@ function MenuForm({ initial, onSaved }) {
                 }
               />
             </Field>
-            <div className="flex items-end gap-1">
-              <Button size="sm" variant="outline" disabled={!index} onClick={() => move(index, -1)}>↑</Button>
-              <Button size="sm" variant="outline" disabled={index === form.items.length - 1} onClick={() => move(index, 1)}>↓</Button>
+            <div className="flex items-end justify-end md:col-span-2">
+              <ActionMenu
+                label={`Actions for menu item ${item.labelEn || index + 1}`}
+                actions={[
+                  { label: 'Move up', disabled: !index, onSelect: () => move(index, -1) },
+                  { label: 'Move down', disabled: index === form.items.length - 1, onSelect: () => move(index, 1) },
+                  { separator: true },
+                  { label: 'Remove', destructive: true, onSelect: () => setForm({ ...form, items: form.items.filter((_, position) => position !== index) }) }
+                ]}
+              />
             </div>
-            <Button size="sm" variant="outline" onClick={() => setForm({ ...form, items: form.items.filter((_, position) => position !== index) })}>Remove</Button>
           </div>
         ))}
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
-        <Button variant="secondary" onClick={() => setForm({ ...form, items: [...form.items, { clientKey: crypto.randomUUID(), labelEn: '', labelBn: '', targetType: 'url', url: '', targetId: null, displayOrder: form.items.length }] })}>
+        <Button variant="secondary" onClick={() => setForm({ ...form, items: [...form.items, { clientKey: crypto.randomUUID(), labelEn: '', labelBn: '', targetType: 'url', url: '', targetId: null, displayOrder: form.items.length, visible: true }] })}>
           Add item
         </Button>
         <Button loading={mutation.isPending} onClick={() => mutation.mutate()}>{initial ? 'Save menu' : 'Create menu'}</Button>
@@ -240,6 +248,9 @@ function ThemeEditor() {
         <Card>
           <Skeleton className="h-40" />
         </Card>
+      ) : query.data ? (
+        // No theme row exists yet: start a first draft instead of rendering nothing.
+        <ThemeForm initial={{ status: 'draft', settings: {}, version: 1 }} onSaved={() => query.refetch()} />
       ) : null}
       {query.error ? <Alert tone="error">{apiMessage(query.error)}</Alert> : null}
     </div>
@@ -252,7 +263,7 @@ function ThemeForm({ initial, onSaved }) {
   const [status, setStatus] = useState(initial.status);
   const mutation = useMutation({
     mutationFn: () => browserApi.put('/admin/theme', { status, settings, version: Number(initial.version), sourceId: initial.id }),
-    onSuccess: onSaved
+    onSuccess: async () => { onSaved(); await invalidateStorefrontSettings(tokenManager.get()); }
   });
 
   return (

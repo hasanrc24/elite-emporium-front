@@ -8,6 +8,8 @@ import { apiMessage } from '@/lib/api/browser-api';
 import { orderApi } from '@/lib/api/order-api';
 
 const terminal = new Set(['paid', 'cancelled', 'failed']);
+// Bounded exponential polling (5s, 10s, 20s, 40s, then 60s) for about five minutes; manual retry stays available.
+const POLL_DELAYS = [5000, 10000, 20000, 40000, 60000, 60000, 60000, 60000];
 
 export function BkashRecovery({ locale }) {
   const search = useSearchParams();
@@ -15,6 +17,7 @@ export function BkashRecovery({ locale }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
+  const [polls, setPolls] = useState(0);
   const callbackStatus = search.get('status');
 
   useEffect(() => {
@@ -56,10 +59,10 @@ export function BkashRecovery({ locale }) {
   }, [record, recover]);
 
   useEffect(() => {
-    if (!result || terminal.has(result.state)) return;
-    const timer = window.setTimeout(recover, 5000);
+    if (!result || terminal.has(result.state) || polls >= POLL_DELAYS.length) return;
+    const timer = window.setTimeout(() => { setPolls((count) => count + 1); recover(); }, POLL_DELAYS[polls]);
     return () => window.clearTimeout(timer);
-  }, [recover, result]);
+  }, [polls, recover, result]);
 
   if (!record && !checking) {
     return (
@@ -94,7 +97,7 @@ export function BkashRecovery({ locale }) {
           ) : terminal.has(state) ? (
             <Button asChild><Link href={`/${locale}/checkout`}>Return to checkout</Link></Button>
           ) : (
-            <Button loading={checking} onClick={recover}>Check again</Button>
+            <Button loading={checking} onClick={() => { setPolls(0); recover(); }}>Check again</Button>
           )}
         </div>
       </CardBody>

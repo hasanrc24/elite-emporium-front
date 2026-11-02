@@ -1,29 +1,83 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import { useTranslations } from 'next-intl';
+import { Star } from 'lucide-react';
 import { WishlistButton } from '@/components/storefront/wishlist-button';
-import { formatMoney } from '@/lib/utils';
-import { ArrowUpRight } from 'lucide-react';
+import { defaultVariant, formatNumber, knownQuantity, productBadges, quickAddVariant, secondaryImage, sizeSummary } from '@/lib/storefront';
+import { discountPercent, formatMoney } from '@/lib/utils';
+import { QuickAdd } from './quick-add';
 
-export function ProductCard({ product, locale }) {
-  const defaultVariant = product.variants.find((variant) => variant.isDefault) || product.variants[0];
-  const unavailable = !defaultVariant?.available && defaultVariant?.stockPolicy === 'deny';
-  const hasOptions = (product.variants || []).length > 1;
-  return <article className="product-card group relative min-w-0">
-    <div className="relative overflow-hidden rounded-[var(--radius-lg)] bg-[linear-gradient(145deg,var(--color-primary-soft),var(--color-surface-muted))]">
-      <Link href={`/${locale}/product/${product.slug}`} className="relative block aspect-[4/5] overflow-hidden" aria-label={`View ${product.name}`}>
-        {product.primaryImage ? <Image src={product.primaryImage.url} alt={product.primaryImage.alt || product.name} fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw" className="object-cover transition duration-500 ease-out group-hover:scale-[1.035]" /> : <span className="absolute inset-0 grid place-items-center text-center text-[11px] font-semibold tracking-[.22em] text-[var(--color-primary)]/50">ELITE<br />EMPORIUM</span>}
-        <span className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
-        {unavailable ? <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1.5 text-[10px] font-bold text-[var(--color-danger)]">Out of stock</span> : null}
-        {defaultVariant?.salePrice ? <span className="absolute left-3 top-3 rounded-full bg-[var(--color-danger)] px-3 py-1.5 text-[10px] font-bold text-white">Sale</span> : null}
-      </Link>
-      <div className="absolute right-3 top-3 z-10"><WishlistButton productId={product.id} variantId={defaultVariant?.id} locale={locale} compact /></div>
-      <span className="pointer-events-none absolute inset-0 rounded-[var(--radius-lg)] border border-black/5" />
+/** Listing card (FE-UX-002): portrait image, hover image, badges, sizes and price. */
+export function ProductCard({ product, locale, priority = false, sizes = '(min-width: 1200px) 25vw, (min-width: 768px) 33vw, 50vw' }) {
+  const t = useTranslations('Product');
+  const variant = defaultVariant(product);
+  const badges = productBadges(product);
+  const hover = secondaryImage(product);
+  const sizeList = sizeSummary(product);
+  const quick = quickAddVariant(product);
+  const percent = variant?.salePrice ? discountPercent(variant.regularPrice, variant.salePrice) : 0;
+  const prices = product.priceRange;
+  const varies = prices && prices.min !== prices.max;
+  const href = `/${locale}/product/${product.slug}`;
+  return (
+    <article className="group relative min-w-0">
+      <div className="relative">
+        <Link href={href} className="product-media block rounded-[var(--radius-sm)]" tabIndex={-1} aria-hidden="true">
+          {product.primaryImage ? (
+            <>
+              <Image src={product.primaryImage.url} alt={product.primaryImage.alt || product.name} fill sizes={sizes} priority={priority} className={`transition-opacity duration-500 ${hover ? 'group-hover:opacity-0' : ''}`} />
+              {hover ? <Image src={hover.url} alt="" fill sizes={sizes} className="opacity-0 transition-opacity duration-500 group-hover:opacity-100" /> : null}
+            </>
+          ) : <span className="absolute inset-0 grid place-items-center text-xs uppercase tracking-[.2em] text-[var(--color-muted)]">Elite Emporium</span>}
+          {badges.soldOut ? <span className="absolute inset-x-0 bottom-0 bg-white/85 py-1.5 text-center text-[12px] font-medium text-[#111]">{t('soldOut')}</span> : null}
+        </Link>
+        <div className="pointer-events-none absolute left-2 top-2 flex flex-col items-start gap-1">
+          {percent > 0 ? <span className="rounded-[3px] bg-[var(--color-sale)] px-1.5 py-0.5 text-[11px] font-medium text-white">{t('off', { percent: formatNumber(percent, locale) })}</span> : null}
+          {(product.isNew ?? false) && !badges.soldOut ? <span className="rounded-[3px] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[#111]">{t('new')}</span> : null}
+          {badges.preorder ? <span className="rounded-[3px] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[#111]">{t('preorder')}</span> : null}
+          {badges.lowStock && !badges.soldOut ? <span className="rounded-[3px] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[#a35f00]">{(knownQuantity(variant) != null ? t('lowStock', { count: formatNumber(knownQuantity(variant), locale) }) : t('lowStockNoCount'))}</span> : null}
+        </div>
+        <div className="absolute right-2 top-2"><WishlistButton productId={product.id} variantId={null} locale={locale} compact /></div>
+        {quick ? <div className="absolute bottom-2 right-2"><QuickAdd variantId={quick.id} name={product.name} locale={locale} /></div> : null}
+        {sizeList.length > 1 ? (
+          <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden flex-wrap justify-center gap-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100 lg:flex" aria-hidden="true">
+            {sizeList.slice(0, 7).map((size) => <span key={size.label} className={`min-w-8 rounded-[3px] bg-white/95 px-1.5 py-0.5 text-center text-[11px] ${size.available ? 'text-[#111]' : 'text-[#999] line-through'}`}>{size.label}</span>)}
+          </div>
+        ) : null}
+      </div>
+      <div className="pt-2.5">
+        <h3 className="line-clamp-2 text-[14px] leading-snug md:text-[15px]"><Link href={href} className="hover:underline hover:underline-offset-4">{product.name}</Link></h3>
+        <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[14px] tabular-nums md:text-[15px]">
+          {varies ? <span>{t('priceFrom', { price: formatMoney(prices.min, locale) })}</span> : <span className={variant?.salePrice ? 'text-[var(--color-sale)]' : ''}>{formatMoney(variant?.price || prices?.min, locale)}</span>}
+          {variant?.salePrice && !varies ? <del className="text-[13px] text-[var(--color-muted)]">{formatMoney(variant.regularPrice, locale)}</del> : null}
+        </p>
+        {product.rating?.count ? <p className="mt-1 flex items-center gap-1 text-[12px] text-[var(--color-muted)]"><Star size={12} fill="currentColor" className="text-[var(--color-warning)]" aria-hidden="true" /><span className="sr-only">{t('ratingLabel', { average: formatNumber(product.rating.average, locale, 1), count: product.rating.count })}</span><span className="tabular-nums" aria-hidden="true">{formatNumber(product.rating.average, locale, 1)}</span><span aria-hidden="true">({formatNumber(product.rating.count, locale)})</span></p> : null}
+      </div>
+    </article>
+  );
+}
+
+export function ProductCardSkeleton() {
+  return <div aria-hidden="true"><div className="skeleton aspect-[3/4] rounded-[var(--radius-sm)]" /><div className="skeleton mt-3 h-4 w-4/5 rounded" /><div className="skeleton mt-2 h-4 w-1/3 rounded" /></div>;
+}
+
+/** Route-level loading placeholder for listing pages. */
+export function CatalogSkeleton() {
+  return (
+    <div className="container pb-10" aria-busy="true">
+      <div className="skeleton mb-6 mt-8 h-10 w-1/3 rounded" />
+      <div className="skeleton mb-5 h-10 rounded" />
+      <div className="product-grid">{[0, 1, 2, 3, 4, 5, 6, 7].map((key) => <ProductCardSkeleton key={key} />)}</div>
     </div>
-    <div className="pb-2 pt-4">
-      <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[var(--color-primary)]">{product.category?.name || 'Elite Emporium'}</p>
-      <h2 className="mt-1 line-clamp-2 text-base font-bold leading-snug tracking-[-.02em] transition group-hover:text-[var(--color-primary)]"><Link href={`/${locale}/product/${product.slug}`}>{product.name}</Link></h2>
-      <div className="mt-2 flex items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2 tabular-nums"><strong className="text-base font-bold">{formatMoney(defaultVariant?.price || product.priceRange?.min, locale)}</strong>{defaultVariant?.salePrice ? <del className="text-xs muted">{formatMoney(defaultVariant.regularPrice, locale)}</del> : null}</div>{product.rating?.count ? <p className="text-xs text-[var(--color-warning)]">★ {product.rating.average.toFixed(1)} <span className="muted">({product.rating.count})</span></p> : null}</div>
-      <Link href={`/${locale}/product/${product.slug}`} className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] bg-white px-3 text-xs font-bold transition hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-soft)] hover:text-[var(--color-primary)]">{hasOptions ? 'Choose options' : unavailable ? 'View details' : 'View product'} <ArrowUpRight size={14} /></Link>
+  );
+}
+
+/** Route-level loading placeholder for the product page. */
+export function ProductPageSkeleton() {
+  return (
+    <div className="container grid gap-6 pb-10 pt-0 md:grid-cols-[1.15fr_1fr] md:gap-10 md:pt-6" aria-busy="true">
+      <div className="skeleton -mx-4 aspect-[3/4] max-h-[66svh] w-[calc(100%+2rem)] md:mx-0 md:max-h-none md:w-full md:rounded-[var(--radius-sm)]" />
+      <div className="grid content-start gap-4"><div className="skeleton h-8 w-3/4 rounded" /><div className="skeleton h-6 w-1/4 rounded" /><div className="skeleton h-24 rounded" /><div className="skeleton h-12 rounded" /></div>
     </div>
-  </article>;
+  );
 }

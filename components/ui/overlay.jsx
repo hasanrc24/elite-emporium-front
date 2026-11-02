@@ -79,10 +79,11 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
   );
 }
 
-export function ConfirmAction({ trigger, title, description, confirmLabel = 'Confirm', cancelLabel = 'Cancel', tone = 'danger', onConfirm }) {
+/** Confirmation dialog. Pass `trigger`, or control it with `open`/`onOpenChange`. */
+export function ConfirmAction({ trigger, open, onOpenChange, title, description, confirmLabel = 'Confirm', cancelLabel = 'Cancel', tone = 'danger', onConfirm }) {
   return (
-    <AlertDialog.Root>
-      <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger>
+    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      {trigger ? <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger> : null}
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-[color-mix(in_srgb,var(--color-text)_50%,transparent)] backdrop-blur-sm" />
         <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(100%-2rem,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-6 shadow-[var(--shadow-md)] focus:outline-none">
@@ -100,10 +101,11 @@ export function ConfirmAction({ trigger, title, description, confirmLabel = 'Con
                 onClick={(e) => {
                   e.preventDefault();
                   onConfirm?.();
+                  onOpenChange?.(false);
                 }}
                 className={cn(
-                  'inline-flex h-11 items-center justify-center rounded-[var(--radius-sm)] px-5 text-sm font-semibold text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]',
-                  tone === 'danger' ? 'bg-[var(--color-danger)] hover:brightness-95' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-strong)]'
+                  'inline-flex h-11 items-center justify-center rounded-[var(--radius-sm)] px-5 text-sm font-semibold focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]',
+                  tone === 'danger' ? 'bg-[var(--color-danger)] text-[var(--color-on-danger)] hover:brightness-95' : 'bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary-strong)]'
                 )}
               >
                 {confirmLabel}
@@ -121,7 +123,7 @@ export function DropdownMenuRoot({ trigger, children, align = 'end', sideOffset 
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align={align} sideOffset={sideOffset} className="z-50 min-w-[10rem] overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-1 shadow-[var(--shadow-md)] focus:outline-none">
+        <DropdownMenu.Content align={align} sideOffset={sideOffset} collisionPadding={12} className="z-[80] min-w-[10rem] overflow-hidden rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-1 shadow-[var(--shadow-md)] focus:outline-none">
           {children}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
@@ -129,9 +131,10 @@ export function DropdownMenuRoot({ trigger, children, align = 'end', sideOffset 
   );
 }
 
-export function DropdownItem({ children, onSelect, disabled, destructive }) {
+export function DropdownItem({ children, onSelect, disabled, destructive, asChild }) {
   return (
     <DropdownMenu.Item
+      asChild={asChild}
       onSelect={(e) => {
         if (onSelect) {
           e.preventDefault();
@@ -141,7 +144,7 @@ export function DropdownItem({ children, onSelect, disabled, destructive }) {
       disabled={disabled}
       className={cn(
         'flex cursor-pointer items-center gap-2 rounded-[calc(var(--radius-sm)-.25rem)] px-3 py-2 text-sm outline-none transition data-[highlighted]:bg-[var(--color-primary-soft)] data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
-        destructive && 'text-[var(--color-danger)] data-[highlighted]:bg-[color-mix(in_srgb,var(--color-danger)_10%,white)]'
+        destructive && 'text-[var(--color-danger)] data-[highlighted]:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
       )}
     >
       {children}

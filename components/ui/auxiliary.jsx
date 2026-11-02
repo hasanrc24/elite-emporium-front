@@ -2,40 +2,57 @@
 
 import { MoreHorizontal, Copy, Check } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Button, DropdownItem, DropdownMenuRoot, DropdownSeparator, IconButton, pushToast } from '@/components/ui';
+import { Button, ConfirmAction, DropdownItem, DropdownMenuRoot, DropdownSeparator, IconButton, pushToast } from '@/components/ui';
 
 /**
- * Three-dot "Action menu" — a primitive used everywhere in admin tables.
- * Pass an `actions` array of { label, onSelect, icon, destructive, separator? } items.
+ * Three-dot row action menu used by every admin table.
+ * `actions`: { label, icon, onSelect | href, destructive, disabled, hidden,
+ * confirm: { title, description, confirmLabel } } or { separator: true }.
+ * Items with `confirm` ask before running; hidden items and dangling separators are dropped.
  */
 export function ActionMenu({ actions = [], label = 'Open actions', align = 'end', sideOffset = 6 }) {
+  const [pending, setPending] = useState(null);
+  const visible = actions.filter((action) => action && !action.hidden).filter((action, i, list) => !action.separator || (i > 0 && i < list.length - 1 && !list[i - 1].separator));
+  if (!visible.some((action) => !action.separator)) return null;
   return (
-    <DropdownMenuRoot
-      align={align}
-      sideOffset={sideOffset}
-      trigger={
-        <IconButton
-          icon={MoreHorizontal}
-          label={label}
-          variant="ghost"
-          size="icon"
-          aria-haspopup="menu"
+    <>
+      <DropdownMenuRoot
+        align={align}
+        sideOffset={sideOffset}
+        trigger={<IconButton icon={MoreHorizontal} label={label} variant="ghost" size="icon" aria-haspopup="menu" onClick={(event) => event.stopPropagation()} />}
+      >
+        {visible.map((action, i) => {
+          if (action.separator) return <DropdownSeparator key={`sep-${i}`} />;
+          const content = <>{action.icon ? <action.icon className="h-4 w-4" aria-hidden="true" /> : null}<span>{action.label}</span></>;
+          if (action.href) {
+            return (
+              <DropdownItem key={action.label} asChild disabled={action.disabled}>
+                <Link href={action.href} onClick={(event) => event.stopPropagation()}>{content}</Link>
+              </DropdownItem>
+            );
+          }
+          return (
+            <DropdownItem key={action.label} disabled={action.disabled} destructive={action.destructive} onSelect={() => (action.confirm ? setPending(action) : action.onSelect?.())}>
+              {content}
+            </DropdownItem>
+          );
+        })}
+      </DropdownMenuRoot>
+      {pending ? (
+        <ConfirmAction
+          open
+          onOpenChange={(open) => { if (!open) setPending(null); }}
+          title={pending.confirm.title || `${pending.label}?`}
+          description={pending.confirm.description}
+          confirmLabel={pending.confirm.confirmLabel || pending.label}
+          tone={pending.destructive ? 'danger' : 'primary'}
+          onConfirm={() => pending.onSelect?.()}
         />
-      }
-    >
-      {actions.map((action, i) => (
-        action.separator ? (
-          <DropdownSeparator key={`sep-${i}`} />
-        ) : (
-          <DropdownItem key={action.label} onSelect={action.onSelect} disabled={action.disabled} destructive={action.destructive}>
-            {action.icon ? <action.icon className="h-4 w-4" aria-hidden="true" /> : null}
-            <span>{action.label}</span>
-          </DropdownItem>
-        )
-      ))}
-    </DropdownMenuRoot>
+      ) : null}
+    </>
   );
 }
 
@@ -115,13 +132,13 @@ export function FilterChip({ label, active = false, onSelect, onClear, count }) 
       className={cn(
         'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition',
         active
-          ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
+          ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-primary)]'
           : 'border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-text)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
       )}
     >
       <span>{label}</span>
       {count !== undefined ? (
-        <span className={cn('rounded-full px-1.5 py-0.5 tabular-nums', active ? 'bg-white/20' : 'bg-[var(--color-surface-muted)]')}>{count}</span>
+        <span className={cn('rounded-full px-1.5 py-0.5 tabular-nums', active ? 'bg-current/20' : 'bg-[var(--color-surface-muted)]')}>{count}</span>
       ) : null}
       {onClear && active ? (
         <span
@@ -141,9 +158,9 @@ export function FilterChip({ label, active = false, onSelect, onClear, count }) 
 export function Banner({ tone = 'info', title, children, action, onDismiss, className, icon: Icon }) {
   const tones = {
     info: 'border-[var(--color-border)] bg-[var(--color-primary-soft)] text-[var(--color-primary-strong)]',
-    success: 'border-[color-mix(in_srgb,var(--color-success)_24%,white)] bg-[color-mix(in_srgb,var(--color-success)_7%,white)] text-[var(--color-success)]',
-    warning: 'border-[color-mix(in_srgb,var(--color-warning)_24%,white)] bg-[color-mix(in_srgb,var(--color-warning)_7%,white)] text-[var(--color-warning)]',
-    danger: 'border-[color-mix(in_srgb,var(--color-danger)_24%,white)] bg-[color-mix(in_srgb,var(--color-danger)_7%,white)] text-[var(--color-danger)]'
+    success: 'border-[color-mix(in_srgb,var(--color-success)_24%,transparent)] bg-[color-mix(in_srgb,var(--color-success)_7%,transparent)] text-[var(--color-success)]',
+    warning: 'border-[color-mix(in_srgb,var(--color-warning)_24%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_7%,transparent)] text-[var(--color-warning)]',
+    danger: 'border-[color-mix(in_srgb,var(--color-danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--color-danger)_7%,transparent)] text-[var(--color-danger)]'
   };
   return (
     <div role={tone === 'danger' ? 'alert' : 'status'} className={cn('flex items-start gap-3 rounded-[var(--radius-sm)] border px-4 py-3 text-sm', tones[tone] || tones.info, className)}>
@@ -154,7 +171,7 @@ export function Banner({ tone = 'info', title, children, action, onDismiss, clas
       </div>
       {action ? <div className="flex items-center gap-2">{action}</div> : null}
       {onDismiss ? (
-        <button type="button" onClick={onDismiss} aria-label="Dismiss" className="self-start rounded-full p-1 hover:bg-black/5">×</button>
+        <button type="button" onClick={onDismiss} aria-label="Dismiss" className="self-start rounded-full p-1 hover:bg-current/10">×</button>
       ) : null}
     </div>
   );
@@ -190,7 +207,7 @@ export function Stepper({ steps = [], current = 0, className }) {
         const active = i === current;
         return (
           <li key={step.label || i} className="flex items-center gap-2">
-            <span className={cn('grid h-7 w-7 place-items-center rounded-full text-xs font-bold', done && 'bg-[var(--color-success)] text-white', active && 'bg-[var(--color-primary)] text-white', !done && !active && 'bg-[var(--color-surface-muted)] text-[var(--color-muted)]')}>
+            <span className={cn('grid h-7 w-7 place-items-center rounded-full text-xs font-bold', done && 'bg-[var(--color-success)] text-[var(--color-bg)]', active && 'bg-[var(--color-primary)] text-[var(--color-on-primary)]', !done && !active && 'bg-[var(--color-surface-muted)] text-[var(--color-muted)]')}>
               {done ? '✓' : i + 1}
             </span>
             <span className={cn('font-semibold', active ? 'text-[var(--color-text)]' : 'text-[var(--color-muted)]')}>{step.label}</span>
