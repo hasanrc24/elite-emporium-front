@@ -32,18 +32,22 @@ export default async function HomePage({ params }) {
     list(serverGetEnvelope('/products?sale=true&pageSize=12', { locale, tags: ['products'], revalidate: 60 }))
   ]);
   const sections = (home?.sections || []).map((section) => ({ ...section, config: localized(section.config, locale) }));
+  const manualIds = [...new Set(sections.filter((section) => section.type === 'product_carousel').flatMap((section) => (Array.isArray(section.config?.ids) ? section.config.ids : [])))].slice(0, 48);
+  const manual = manualIds.length ? await list(serverGetEnvelope(`/products?ids=${manualIds.join(',')}&pageSize=48`, { locale, tags: ['products'], revalidate: 60 })) : [];
+  // Admin switches (Settings → Homepage); everything is shown until switched off.
+  const show = { showCategories: true, showNewArrivals: true, showFeatured: true, showOnSale: true, showCollections: true, showTrustStrip: true, ...(settings?.homepage || {}) };
   const topCategories = categories.filter((category) => !category.parentId);
   const insideDays = settings?.delivery?.estimates?.inside_dhaka?.[locale] || settings?.delivery?.estimates?.inside_dhaka?.en;
   const returnDays = settings?.returns?.enabled ? settings.returns.windowDays : null;
   const fallbackImage = [...featured, ...newest].find((product) => product.primaryImage)?.primaryImage?.url;
 
   const blocks = {
-    categories: topCategories.length ? <CategoryCircles key="categories" title={t('categories')} categories={topCategories} locale={locale} /> : null,
-    newest: newest.length ? <ProductRail key="newest" title={t('newArrivals')} href={`/${locale}/shop?sort=newest`} viewAll={t('viewAll')} products={newest} locale={locale} /> : null,
-    featured: featured.length ? <ProductGridSection key="featured" title={t('bestSellers')} href={`/${locale}/shop`} viewAll={t('viewAll')} products={featured.slice(0, 8)} locale={locale} /> : null,
-    sale: sale.length ? <ProductRail key="sale" title={t('onSale')} href={`/${locale}/shop?sale=true`} viewAll={t('viewAll')} products={sale} locale={locale} /> : null,
-    collections: collections.length ? <CollectionTiles key="collections" title={t('collections')} viewAll={t('viewAll')} collections={collections} locale={locale} /> : null,
-    trust: <TrustStrip key="trust" items={[
+    categories: show.showCategories && topCategories.length ? <CategoryCircles key="categories" title={t('categories')} categories={topCategories} locale={locale} /> : null,
+    newest: show.showNewArrivals && newest.length ? <ProductRail key="newest" title={t('newArrivals')} href={`/${locale}/shop?sort=newest`} viewAll={t('viewAll')} products={newest} locale={locale} /> : null,
+    featured: show.showFeatured && featured.length ? <ProductGridSection key="featured" title={t('bestSellers')} href={`/${locale}/shop`} viewAll={t('viewAll')} products={featured.slice(0, 8)} locale={locale} /> : null,
+    sale: show.showOnSale && sale.length ? <ProductRail key="sale" title={t('onSale')} href={`/${locale}/shop?sale=true`} viewAll={t('viewAll')} products={sale} locale={locale} /> : null,
+    collections: show.showCollections && collections.length ? <CollectionTiles key="collections" title={t('collections')} viewAll={t('viewAll')} collections={collections} locale={locale} /> : null,
+    trust: !show.showTrustStrip ? null : <TrustStrip key="trust" items={[
       [Banknote, tt('cod'), tt('codText')],
       [Truck, tt('delivery'), insideDays ? tt('deliveryText', { days: insideDays }) : tt('delivery')],
       ...(returnDays ? [[RotateCcw, tt('returns'), tt('returnsText', { days: returnDays })]] : []),
@@ -65,9 +69,14 @@ export default async function HomePage({ params }) {
     if (section.type === 'category_grid' && !used.has('categories')) { used.add('categories'); rendered.push(blocks.categories); }
     else if (section.type === 'collection_grid' && !used.has('collections')) { used.add('collections'); rendered.push(blocks.collections); }
     else if (section.type === 'product_carousel') {
-      const source = config.ids?.length ? [...featured, ...newest, ...sale].filter((product, index, all) => config.ids.includes(product.id) && all.findIndex((item) => item.id === product.id) === index) : featured;
-      if (source.length) rendered.push(<ProductRail key={section.id} title={config.title || t('bestSellers')} href={`/${locale}/shop`} viewAll={t('viewAll')} products={source} locale={locale} />);
-      used.add('featured');
+      // Hand-picked products keep the admin's order; otherwise a live list (new arrivals, featured, on sale).
+      const picked = Array.isArray(config.ids) ? config.ids.map((id) => manual.find((product) => product.id === id)).filter(Boolean) : [];
+      const sourceKey = ['newest', 'featured', 'sale'].includes(config.source) ? config.source : 'featured';
+      const source = picked.length ? picked : { newest, featured, sale }[sourceKey];
+      const heading = config.title || { newest: t('newArrivals'), featured: t('bestSellers'), sale: t('onSale') }[sourceKey];
+      const link = { newest: `/${locale}/shop?sort=newest`, sale: `/${locale}/shop?sale=true` }[sourceKey] || `/${locale}/shop`;
+      if (source.length) rendered.push(<ProductRail key={section.id} title={heading} href={link} viewAll={t('viewAll')} products={source} locale={locale} />);
+      used.add(picked.length ? 'featured' : sourceKey);
     }
     else if (section.type === 'banner') rendered.push(<div key={section.id} className="container"><BannerBlock data={{ ...config, text: config.text || htmlToText(config.body), url: config.url || config.cta?.href, cta: config.cta?.label || config.cta }} locale={locale} /></div>);
     else if (['editorial', 'countdown', 'testimonials', 'newsletter'].includes(section.type)) rendered.push(<div key={section.id} className="container"><StructuredContent locale={locale} blocks={[{ id: section.id, type: section.type === 'editorial' ? 'rich_text' : section.type, data: section.type === 'editorial' ? { html: config.html || config.body || '' } : config }]} /></div>);

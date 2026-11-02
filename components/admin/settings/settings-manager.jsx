@@ -1,5 +1,6 @@
 'use client';
 
+import { MetaCapiPanel } from '../meta-capi-card';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -197,7 +198,9 @@ export function SettingsSection({ sectionId }) {
         {lastSaved ? <p className="mt-1 text-xs text-[var(--color-muted)]">Last saved <FormattedDate value={lastSaved} withTime /></p> : null}
       </header>
       {groupsQuery.isLoading ? <CardSkeletons count={section.cards.length} /> : groupsQuery.error ? <LoadError error={groupsQuery.error} onRetry={() => groupsQuery.refetch()} /> : (
-        section.cards.map((card) => <SettingsCard key={card.id} card={card} />)
+        <>
+          {section.cards.map((card) => <SettingsCard key={card.id} card={card} />)}
+        </>
       )}
     </div>
   );
@@ -224,12 +227,15 @@ function SettingsCard({ card }) {
   if (isMethods) {
     body = settings.shippingQuery.isLoading ? <Skeleton className="h-40" />
       : settings.shippingQuery.error ? <LoadError error={settings.shippingQuery.error} onRetry={() => settings.shippingQuery.refetch()} compact />
-      : <DeliveryMethods methods={settings.methods} zones={settings.zones} errorsFor={errorsFor} isMethodDirty={settings.isMethodDirty} setMethod={settings.setMethod} />;
+      : <DeliveryMethods methods={settings.methods} zones={settings.zones} errorsFor={errorsFor} isMethodDirty={settings.isMethodDirty} setMethod={settings.setMethod} onAdd={settings.addMethod} onArchive={settings.archiveMethod} />;
   } else if (card.kind === 'delivery-estimates') {
-    body = <DeliveryEstimates value={values.delivery} errors={errors.delivery || {}} setValue={setValue} />;
+    body = <DeliveryEstimates value={values.delivery} errors={errors.delivery || {}} setValue={setValue} methods={settings.methods} />;
   } else {
     body = <FieldList fields={fields} values={values} errors={errors} onChange={setValue} />;
   }
+  // Meta Pixel and the Conversions API are one setup. The token is a secret, so it is stored encrypted
+  // outside the public analytics group, but it is edited here, under the pixel it belongs to.
+  const metaServerSide = card.id === 'analytics' && values.analytics?.provider === 'meta' && values.analytics?.serverSide === true;
 
   return (
     <section id={`card-${card.id}`} data-settings-card="" className="settings-target card overflow-visible" aria-labelledby={`card-${card.id}-title`}>
@@ -256,6 +262,7 @@ function SettingsCard({ card }) {
         ))}
         {formErrors.map((message) => <Alert key={message} tone="error">{message}</Alert>)}
         {body}
+        {metaServerSide ? <MetaCapiPanel /> : null}
       </div>
     </section>
   );

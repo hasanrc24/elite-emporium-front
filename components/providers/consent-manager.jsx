@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { configureMetaTracking, trackMetaPageView } from '@/lib/meta-tracking';
 
 const cookieName = 'ee_consent';
 function readConsent() { const match = document.cookie.split('; ').find((item) => item.startsWith(`${cookieName}=`)); try { return match ? JSON.parse(decodeURIComponent(match.split('=').slice(1).join('='))) : null; } catch { return null; } }
@@ -17,12 +19,21 @@ export function ConsentLink() {
 export function ConsentManager({ settings }) {
   const t = useTranslations('Consent');
   const [consent, setConsent] = useState(undefined); const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const previousPath = useRef(null);
   useEffect(() => { queueMicrotask(() => setConsent(readConsent())); const show = () => setOpen(true); window.addEventListener('ee:consent-preferences', show); return () => window.removeEventListener('ee:consent-preferences', show); }, []);
   useEffect(() => {
     if (!consent?.analytics || !settings?.publicMeasurementId || settings.provider !== 'ga4' || document.querySelector('[data-ee-analytics]')) return;
     const script = document.createElement('script'); script.async = true; script.dataset.eeAnalytics = 'true'; script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(settings.publicMeasurementId)}`; document.head.append(script);
     const analyticsWindow = /** @type {any} */ (window); analyticsWindow.dataLayer = analyticsWindow.dataLayer || []; analyticsWindow.gtag = function gtag() { analyticsWindow.dataLayer.push(arguments); }; analyticsWindow.gtag('js', new Date()); analyticsWindow.gtag('config', settings.publicMeasurementId, { anonymize_ip: true, allow_google_signals: false });
   }, [consent, settings]);
+  // Meta Pixel + Conversions API: starts only after consent (or when none is required).
+  useEffect(() => { if (consent !== undefined) configureMetaTracking(settings, consent); }, [consent, settings]);
+  useEffect(() => {
+    // The first PageView is sent on init; later client-side navigations send their own.
+    if (previousPath.current !== null && previousPath.current !== pathname) trackMetaPageView();
+    previousPath.current = pathname;
+  }, [pathname]);
   if (consent === undefined || (!open && (consent || !settings?.consentRequired))) return null;
   const choose = (analytics) => { const value = { essential: true, analytics, updatedAt: new Date().toISOString() }; persist(value); setConsent(value); setOpen(false); };
   return (

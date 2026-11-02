@@ -1,4 +1,4 @@
-import { Bell, Boxes, Construction, Globe2, PhoneCall, RotateCcw, Receipt, ShieldCheck, ShoppingCart, Store, Truck } from 'lucide-react';
+import { Bell, Boxes, LayoutDashboard, Construction, Globe2, PhoneCall, RotateCcw, Receipt, ShieldCheck, ShoppingCart, Store, Truck } from 'lucide-react';
 
 /**
  * Admin settings layout (FE: "group settings exactly as backend schemas and render control types from
@@ -113,6 +113,29 @@ export const SETTINGS_SECTIONS = [
           { path: 'enabled', type: 'toggle', label: 'Accept wallet payments', description: 'Shows a “pay with wallet” step after the order is placed.' },
           { path: 'accounts', type: 'wallets', label: 'Receiving numbers', description: 'Leave a wallet blank to hide it.', dependsOn: 'enabled', wide: true },
           { path: 'instructions', type: 'localized', label: 'Extra instructions', description: 'Optional, for example “Use Send Money, not Payment”.', dependsOn: 'enabled', max: 500, wide: true }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'homepage',
+    category: 'store',
+    title: 'Homepage',
+    description: 'Choose which automatic sections appear on the storefront home page.',
+    icon: LayoutDashboard,
+    cards: [
+      {
+        id: 'homepage-auto',
+        group: 'homepage',
+        title: 'Automatic sections',
+        description: 'These fill themselves from your catalog. Hero images, banners and hand-picked product rows are managed under Appearance → Home.',
+        fields: [
+          { path: 'showCategories', type: 'toggle', label: 'Categories', description: 'Round category pictures near the top.' },
+          { path: 'showNewArrivals', type: 'toggle', label: 'New arrivals', description: 'Your latest products.' },
+          { path: 'showFeatured', type: 'toggle', label: 'Featured products', description: 'Products marked “Featured” in the product editor.' },
+          { path: 'showOnSale', type: 'toggle', label: 'On sale', description: 'Products with an active sale price.' },
+          { path: 'showCollections', type: 'toggle', label: 'Collections', description: 'Collection tiles with their pictures.' },
+          { path: 'showTrustStrip', type: 'toggle', label: 'Trust strip', description: 'Cash on delivery, delivery time, returns and secure checkout.' }
         ]
       }
     ]
@@ -359,7 +382,8 @@ export const SETTINGS_SECTIONS = [
               { value: 'meta', label: 'Meta Pixel' }
             ]
           },
-          { path: 'publicMeasurementId', type: 'text', label: 'Measurement ID', placeholder: 'G-XXXXXXXXXX', max: 100, nullable: true, hiddenWhen: { path: 'provider', equals: 'none' } },
+          { path: 'publicMeasurementId', type: 'text', label: 'Measurement ID / Pixel ID', description: 'Google Analytics 4: G-XXXXXXXXXX. Meta Pixel: the numeric Pixel ID.', placeholder: 'G-XXXXXXXXXX or 123456789012345', max: 100, nullable: true, hiddenWhen: { path: 'provider', equals: 'none' } },
+          { path: 'serverSide', type: 'toggle', label: 'Also send conversions from our server (Conversions API)', description: 'Recovers purchases that browser blockers hide. Add the access token just below once this is on.', hiddenWhen: { path: 'provider', notEquals: 'meta' }, wide: true },
           { path: 'consentRequired', type: 'toggle', label: 'Ask for cookie consent first', description: 'Analytics loads only after the visitor accepts.', wide: true }
         ]
       }
@@ -440,7 +464,9 @@ export function isFieldInactive(field, value) {
 }
 
 export function isFieldHidden(field, value) {
-  return Boolean(field.hiddenWhen) && getPath(value, field.hiddenWhen.path) === field.hiddenWhen.equals;
+  if (!field.hiddenWhen) return false;
+  const current = getPath(value, field.hiddenWhen.path);
+  return 'notEquals' in field.hiddenWhen ? current !== field.hiddenWhen.notEquals : current === field.hiddenWhen.equals;
 }
 
 const blank = (value) => value === null || value === undefined || String(value).trim() === '';

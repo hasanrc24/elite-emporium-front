@@ -144,7 +144,7 @@ export function CheckoutForm({ locale }) {
         return;
       }
       const order = await orderApi.create({ quoteId: fresh.quoteId }, key);
-      setLastOrder({ reference: order.reference, firstName: formValues.name.trim().split(/\s+/)[0], paymentMethod: order.paymentMethod, paymentStatus: order.paymentStatus, confirmationStatus: order.confirmationStatus, total: order.totals?.grand, itemCount: order.items?.length || 0 });
+      setLastOrder({ reference: order.reference, firstName: formValues.name.trim().split(/\s+/)[0], paymentMethod: order.paymentMethod, paymentStatus: order.paymentStatus, confirmationStatus: order.confirmationStatus, total: order.totals?.grand, itemCount: order.items?.length || 0, contents: (order.items || []).filter((item) => item.productId).map((item) => ({ id: item.productId, quantity: item.quantity, price: item.unitPrice })) });
       client.setQueryData(['cart', locale], { items: [], itemCount: 0, coupons: [], notices: [], totals: { subtotal: '0.00', discount: '0.00', total: '0.00' } });
       client.invalidateQueries({ queryKey: ['cart'] });
       router.push(`/${locale}/order/success/${order.reference}`);

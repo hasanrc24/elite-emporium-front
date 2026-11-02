@@ -20,7 +20,7 @@ export function OrderSuccess({ locale, reference }) {
     if (!order || tracked.current) return;
     tracked.current = true;
     // Purchase fires once, after backend-confirmed placement (FE-ANALYTICS-002).
-    trackCommerceEvent('purchase', { transaction_id: order.reference, value: order.total, currency: 'BDT', items: order.itemCount });
+    trackCommerceEvent('purchase', { transaction_id: order.reference, value: order.total, currency: 'BDT', items: order.itemCount, contents: order.contents });
   }, [order]);
   const paid = order?.paymentStatus === 'paid';
   const confirmationNeeded = !order || ['pending', 'no_answer', 'call_back'].includes(order.confirmationStatus);

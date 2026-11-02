@@ -8,7 +8,7 @@ import { useCart } from '@/lib/hooks/use-cart';
 import { useUiStore } from '@/lib/ui-store';
 
 /** One-tap add for products with a single purchasable variant; everything else opens the product page. */
-export function QuickAdd({ variantId, name, locale }) {
+export function QuickAdd({ variantId, name, locale, productId, price }) {
   const t = useTranslations('Product');
   const { add } = useCart(locale);
   const setCartOpen = useUiStore((state) => state.setCartOpen);
@@ -21,7 +21,7 @@ export function QuickAdd({ variantId, name, locale }) {
   async function run(event) {
     event.preventDefault();
     try {
-      await add.mutateAsync({ variantId, quantity: 1 });
+      await add.mutateAsync({ variantId, quantity: 1, productId, price });
       setDone(true);
       setCartOpen(true);
     } catch { /* surfaced through the alert below */ }

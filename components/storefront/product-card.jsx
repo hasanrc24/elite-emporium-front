@@ -38,7 +38,7 @@ export function ProductCard({ product, locale, priority = false, sizes = '(min-w
           {badges.lowStock && !badges.soldOut ? <span className="rounded-[3px] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[#a35f00]">{(knownQuantity(variant) != null ? t('lowStock', { count: formatNumber(knownQuantity(variant), locale) }) : t('lowStockNoCount'))}</span> : null}
         </div>
         <div className="absolute right-2 top-2"><WishlistButton productId={product.id} variantId={null} locale={locale} compact /></div>
-        {quick ? <div className="absolute bottom-2 right-2"><QuickAdd variantId={quick.id} name={product.name} locale={locale} /></div> : null}
+        {quick ? <div className="absolute bottom-2 right-2"><QuickAdd variantId={quick.id} name={product.name} locale={locale} productId={product.id} price={quick.price} /></div> : null}
         {sizeList.length > 1 ? (
           <div className="pointer-events-none absolute inset-x-2 bottom-2 hidden flex-wrap justify-center gap-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100 lg:flex" aria-hidden="true">
             {sizeList.slice(0, 7).map((size) => <span key={size.label} className={`min-w-8 rounded-[3px] bg-white/95 px-1.5 py-0.5 text-center text-[11px] ${size.available ? 'text-[#111]' : 'text-[#999] line-through'}`}>{size.label}</span>)}

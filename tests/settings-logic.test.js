@@ -14,7 +14,7 @@ import {
   validateMethod
 } from '@/components/admin/settings/settings-schema';
 
-const BACKEND_GROUPS = ['store', 'ordering', 'inventory', 'catalog', 'delivery', 'confirmation', 'risk', 'checkout', 'tax', 'verification', 'returns', 'manualWallet', 'reviews', 'notifications', 'analytics', 'seo', 'maintenance'];
+const BACKEND_GROUPS = ['store', 'ordering', 'inventory', 'catalog', 'delivery', 'confirmation', 'risk', 'checkout', 'tax', 'verification', 'returns', 'manualWallet', 'homepage', 'reviews', 'notifications', 'analytics', 'seo', 'maintenance'];
 
 describe('settings layout', () => {
   it('covers every backend settings group', () => {

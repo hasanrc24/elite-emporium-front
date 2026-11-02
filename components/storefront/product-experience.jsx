@@ -127,7 +127,7 @@ export function ProductExperience({ product, locale, breadcrumb, variantParam = 
     if (!purchasable) return;
     if (mode === 'buy') setBuying(true);
     try {
-      await add.mutateAsync({ variantId: variant.id, quantity });
+      await add.mutateAsync({ variantId: variant.id, quantity, productId: product.id, price: display?.price });
       if (mode === 'buy') router.push(`/${locale}/checkout`);
       else { setJustAdded(true); setCartOpen(true); }
     } catch {

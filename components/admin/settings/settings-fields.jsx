@@ -306,7 +306,7 @@ function LinksField({ field, value, error, disabled, onChange }) {
 
 const productName = (product) => product?.translations?.en?.name || product?.name || product?.slug;
 
-function ProductsField({ field, value, error, disabled, onChange }) {
+export function ProductsField({ field, value, error, disabled, onChange }) {
   const [search, setSearch] = useState('');
   const [term, setTerm] = useState('');
   const id = useId();

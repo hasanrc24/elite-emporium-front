@@ -95,6 +95,36 @@ export function SettingsProvider({ children }) {
     setSaveNotice(null);
   }, [methods]);
 
+  // Adding or deleting a method happens immediately (it is not a field edit), then storefront caches refresh.
+  const afterShippingChange = useCallback(async () => {
+    await shippingQuery.refetch();
+    client.invalidateQueries({ queryKey: ['storefront-settings'] });
+    await invalidateStorefrontSettings(tokenManager.get()).catch(() => undefined);
+    router.refresh();
+  }, [shippingQuery, client, router]);
+
+  const addMethod = useCallback(async (draft) => {
+    const nextOrder = methods.reduce((highest, method) => Math.max(highest, Number(method.displayOrder) || 0), 0) + 1;
+    const created = await browserApi.post('/admin/shipping/methods', {
+      labelEn: draft.labelEn.trim(),
+      labelBn: draft.labelBn.trim(),
+      type: 'flat_rate',
+      flatRate: new Decimal(draft.flatRate).toFixed(2),
+      freeThreshold: draft.freeThreshold ? new Decimal(draft.freeThreshold).toFixed(2) : null,
+      allowedPayments: draft.allowedPayments,
+      active: true,
+      displayOrder: nextOrder
+    }).then((response) => response.data.data);
+    await afterShippingChange();
+    return created;
+  }, [methods, afterShippingChange]);
+
+  const archiveMethod = useCallback(async (id) => {
+    await browserApi.post(`/admin/shipping/methods/${id}/archive`);
+    setMethodDrafts((current) => withoutKey(current, id));
+    await afterShippingChange();
+  }, [afterShippingChange]);
+
   const discard = useCallback(() => {
     setSaveNotice(null);
     setGroupDrafts({});
@@ -218,6 +248,8 @@ export function SettingsProvider({ children }) {
     zones: shippingQuery.data?.zones || [],
     setValue,
     setMethod,
+    addMethod,
+    archiveMethod,
     errorsFor,
     failures,
     reload,
